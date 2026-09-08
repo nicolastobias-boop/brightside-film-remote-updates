@@ -35,5 +35,9 @@ jobs:
         run: |
           VERSION="$(node -p 'require("./package.json").version')"
           APP_ZIP="$(find dist -maxdepth 1 -type f -name '*arm64-mac.zip' -print | head -n 1)"
+          APP_DMG="$(find dist -maxdepth 1 -type f -name '*.dmg' -print | head -n 1)"
+          test -n "$APP_ZIP"
+          test -n "$APP_DMG"
           shasum -a 256 "$APP_ZIP" > "$APP_ZIP.sha256"
-          gh release create "v$VERSION" "$APP_ZIP" "$APP_ZIP.sha256" --title "Brightside Film Remote $VERSION" --generate-notes
+          shasum -a 256 "$APP_DMG" > "$APP_DMG.sha256"
+          gh release create "v$VERSION" "$APP_DMG" "$APP_DMG.sha256" "$APP_ZIP" "$APP_ZIP.sha256" --title "Brightside Film Remote $VERSION" --generate-notes
