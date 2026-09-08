@@ -87,13 +87,35 @@ function layout() {
 }
 
 function createWindow() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+    return;
+  }
+
   mainWindow = new BrowserWindow({
     width: 1540, height: 980, minWidth: 1100, minHeight: 720,
     title: "Brightside Film Remote",
+    show: false,
     backgroundColor: "#0b0b0c",
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false }
   });
-  mainWindow.loadFile(path.join(__dirname, "index.html"));
+  mainWindow.once("ready-to-show", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.center();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+  setTimeout(() => {
+    if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isVisible()) return;
+    mainWindow.center();
+    mainWindow.show();
+    mainWindow.focus();
+  }, 1500);
+  mainWindow.loadFile(path.join(__dirname, "index.html")).catch(error => {
+    dialog.showErrorBox("Brightside Film Remote kunne ikke åbne", error.message);
+  });
 
   higgsView = new WebContentsView({
     webPreferences: {
@@ -108,7 +130,11 @@ function createWindow() {
   higgsView.webContents.setWindowOpenHandler(({url}) => { higgsView.webContents.loadURL(url); return {action: "deny"}; });
   layout();
   mainWindow.on("resize", layout);
-  higgsView.webContents.on("did-navigate", (_e, url) => mainWindow.webContents.send("higgs:url", url));
+  higgsView.webContents.on("did-navigate", (_e, url) => mainWindow?.webContents.send("higgs:url", url));
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+    higgsView = null;
+  });
 }
 
 async function screenshotDataUrl() {
@@ -309,5 +335,12 @@ app.whenReady().then(() => {
   ipcMain.on("approval:decision", (_e, decision) => { if(pendingApproval){ pendingApproval(decision); pendingApproval=null; } });
 });
 
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  else {
+    mainWindow?.show();
+    mainWindow?.focus();
+  }
+});
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 app.on("before-quit", stopUpdater);
