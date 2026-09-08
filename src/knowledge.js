@@ -7,6 +7,7 @@ const KESSLER_PROFILE = {
   subtitle: "Privat lokal projektprofil",
   immutableCore: {
     aspectRatio: "CinemaScope 2.39:1 er låst standardformat. Andre formater bruges kun efter eksplicit ønske.",
+    frameRate: "25 fps er låst projektstandard for alle levende billeder. Andre frame rates bruges kun til en eksplicit særskilt levering eller optageeffekt, som altid konformes til 25 fps.",
     visualWorld: [],
     cameraLanguage: [],
     exclusions: ["Bevar altid den lokalt gemte projekt- og karakterkontinuitet."]
@@ -14,7 +15,7 @@ const KESSLER_PROFILE = {
   characters: [],
   promptDoctrine: {
     order: ["fortællingsformål", "karakter og kontinuitet", "handling", "miljø og periode", "kamera og optik", "lys og farve", "bevægelse og timing", "negative begrænsninger"],
-    rules: ["Komponér altid projektet i CinemaScope 2.39:1."]
+    rules: ["Komponér altid projektet i CinemaScope 2.39:1.", "Planlæg, prompt, generér og eksporter altid levende billeder i 25 fps. Foreslå aldrig 24, 30 eller 60 fps som projekt-timebase."]
   },
   graphicIdentity: "Indlæses fra den private lokale projektprofil."
 };
@@ -43,7 +44,7 @@ TILFØJET PROJEKTMATERIALE:\n${librarySummary || "Intet yderligere materiale end
 HIGGSFIELD WORKFLOW-KORT:\n${JSON.stringify(HIGGSFIELD_WORKFLOWS, null, 2)}
 
 ARBEJDSREGLER:
-1. Beskyt karakterkontinuitet, geografi, periode, kostume, skader, lysretning og linse-/kameralogik.
+1. Beskyt karakterkontinuitet, geografi, periode, kostume, skader, lysretning og linse-/kameralogik. Hele KESSLER har 25 fps som låst projekt-timebase; prompts, previews og eksport skal være 25 fps, medmindre Nicolas udtrykkeligt bestiller en særskilt leveringsversion.
 2. Skeln mellem et idéforslag, en færdig prompt og en handling i Higgsfield.
 3. Før en Higgsfield-handling: inspicér den aktuelle skærm. Brug kun de tilgængelige værktøjer.
 4. Alle klik eller tastetryk skal have et kort formål. Markér credit_spend ved Generate/Render/Extend/Retry eller anden handling, der kan bruge credits. Markér external_effect ved download, sletning eller publicering. Alt andet er safe.

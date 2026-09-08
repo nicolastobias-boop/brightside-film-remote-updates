@@ -363,7 +363,7 @@ async function runAssistant(userText, selectedEngine = "auto") {
   let input = [
     ...state.conversation.slice(-12),
     {role:"user", content:[
-      {type:"input_text", text:`VALGT WORKFLOW/ENGINE: ${selectedEngine}. Ved auto skal du vælge den bedste engine og forklare valget kort før handling.\n\nOPGAVE FRA NICOLAS:\n${userText}`},
+      {type:"input_text", text:`VALGT WORKFLOW/ENGINE: ${selectedEngine}. Ved auto skal du vælge den bedste engine og forklare valget kort før handling. FAST PROJEKT-TIMEBASE: 25 fps. Brug og eksportér 25 fps; andre billedhastigheder er kun optageeffekter, der skal konformes til 25 fps.\n\nOPGAVE FRA NICOLAS:\n${userText}`},
       {type:"input_image", image_url:screenshot, detail:"high"},
       ...references
     ]}
