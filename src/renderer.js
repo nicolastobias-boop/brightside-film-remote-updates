@@ -3,6 +3,7 @@ const messages = $("#messages");
 let mediaRecorder;
 let chunks = [];
 let appState;
+let continuityState;
 
 function addMessage(role, text) {
   const article = document.createElement("article");
@@ -47,6 +48,7 @@ async function initialize() {
   $("#autoUpdate").checked = appState.autoUpdate !== false;
   renderImports(appState.imports || []);
   renderWorkflows(appState.workflows || []);
+  await refreshContinuity();
 }
 
 document.querySelectorAll("[data-tab]").forEach(btn => btn.addEventListener("click", () => {
@@ -66,7 +68,12 @@ $("#composer").addEventListener("submit", async event => {
 $("#settingsBtn").onclick=()=>$("#settingsDialog").showModal();
 $("#saveSettings").onclick=async event=>{event.preventDefault();await window.brightside.saveSettings({apiKey:$("#apiKey").value.trim(),model:$("#model").value.trim(),autoUpdate:$("#autoUpdate").checked});$("#apiKey").value="";$("#settingsDialog").close();};
 $("#checkUpdateBtn").onclick=()=>window.brightside.checkForUpdates();
-window.brightside.onUpdateStatus(message=>{$("#updateStatus").textContent=message;});
+window.brightside.onUpdateStatus(message=>{
+  $("#updateStatus").textContent=message;
+  const button=$("#topUpdateBtn");
+  button.textContent=/henter|søger/i.test(message) ? message : "↓ Hent og installer opdatering";
+  button.disabled=/henter|søger/i.test(message);
+});
 $("#importBtn").onclick=async()=>renderImports(await window.brightside.importProjectFiles());
 $("#openProjectFolderBtn").onclick=()=>window.brightside.openProjectFolder();
 $("#imageForm").addEventListener("submit",async event=>{
@@ -75,7 +82,7 @@ $("#imageForm").addEventListener("submit",async event=>{
   try{
     const result=await window.brightside.createImage({brief,kind:$("#imageKind").value,ratio:$("#imageRatio").value,quality:$("#imageQuality").value,useReferences:$("#useReferences").checked});
     const card=document.createElement("article"); card.className="imageResult"; const img=document.createElement("img"); img.src=result.dataUrl; img.alt=result.name; const p=document.createElement("p"); p.textContent="Tilføjet til Kessler-profilen"; card.append(img,p); $("#imageResults").prepend(card);
-    appState=await window.brightside.getState(); renderImports(appState.imports||[]); $("#imageStatus").textContent="Referencebilledet er klar og gemt i den lokale Kessler-mastermappe.";
+    appState=await window.brightside.getState(); renderImports(appState.imports||[]); await refreshContinuity(); $("#imageStatus").textContent="Referencebilledet er klar og gemt i den aktive Kessler-mappe.";
   }catch(error){$("#imageStatus").textContent=`Kunne ikke skabe billedet: ${error.message}`;}
   finally{$("#createImageBtn").disabled=false;}
 });
@@ -96,5 +103,71 @@ $("#micBtn").onclick=async()=>{
     mediaRecorder.start(); $("#micBtn").classList.add("recording"); $("#voiceStatus").textContent="Lytter — tryk igen for at stoppe";
   }catch(error){$("#voiceStatus").textContent=`Mikrofonfejl: ${error.message}`;}
 };
+
+
+function assetCard(asset, selectable=false) {
+  const card=document.createElement("article"); card.className="assetCard";
+  if(asset.thumbnail){const img=document.createElement("img");img.src=asset.thumbnail;img.alt=asset.name;card.appendChild(img);}
+  else {const placeholder=document.createElement("div");placeholder.className="assetPlaceholder";placeholder.textContent="DOK";card.appendChild(placeholder);}
+  const footer=document.createElement("div");footer.className="assetFooter";
+  if(selectable){const check=document.createElement("input");check.type="checkbox";check.name="continuityAsset";check.value=asset.id;footer.appendChild(check);}
+  const name=document.createElement("span");name.textContent=asset.name;name.title=asset.name;footer.appendChild(name);card.appendChild(footer);
+  return card;
+}
+
+function renderAssetGrid(selector, assets, selectable=false) {
+  const root=$(selector); root.textContent="";
+  if(!assets.length){const empty=document.createElement("p");empty.className="hint";empty.textContent="Ingen elementer endnu.";root.appendChild(empty);return;}
+  assets.forEach(asset=>root.appendChild(assetCard(asset,selectable)));
+}
+
+function renderFileStack(selector, files, canFinalize=false) {
+  const root=$(selector); root.textContent="";
+  if(!files.length){const empty=document.createElement("p");empty.className="hint";empty.textContent="Mappen er tom.";root.appendChild(empty);return;}
+  files.forEach(file=>{
+    const row=document.createElement("div");row.className="sceneFile";
+    if(file.thumbnail){const img=document.createElement("img");img.src=file.thumbnail;img.alt=file.name;row.appendChild(img);}
+    const name=document.createElement("span");name.textContent=file.name;name.title=file.name;row.appendChild(name);
+    if(canFinalize){const button=document.createElement("button");button.className="small";button.textContent="Flyt til Final";button.onclick=async()=>renderContinuity(await window.brightside.moveWorkToFinal(file.name));row.appendChild(button);}
+    root.appendChild(row);
+  });
+}
+
+function renderContinuity(data) {
+  continuityState=data;
+  const select=$("#sceneSelect"); select.textContent="";
+  const empty=document.createElement("option");empty.value="";empty.textContent=data.scenes.length ? "Vælg scene…" : "Ingen scene endnu";select.appendChild(empty);
+  data.scenes.forEach(scene=>{const option=document.createElement("option");option.value=scene.id;option.textContent=scene.title;option.selected=scene.id===data.activeSceneId;select.appendChild(option);});
+  const active=data.scenes.find(scene=>scene.id===data.activeSceneId);
+  $("#activeScenePath").textContent=active ? `KESSLER/Scener/${active.folder}/Referencer · Work · Final` : "Opret eller vælg en scene.";
+  $("#openSceneFolderBtn").disabled=!active;
+  $("#importSceneRefsBtn").disabled=!active;
+  $("#addElementsBtn").disabled=!active;
+  renderAssetGrid("#characterAssets",data.characters||[],true);
+  renderAssetGrid("#locationAssets",data.locations||[],true);
+  renderAssetGrid("#sceneReferences",data.references||[],false);
+  renderFileStack("#sceneWork",data.work||[],true);
+  renderFileStack("#sceneFinal",data.final||[],false);
+}
+
+async function refreshContinuity(){renderContinuity(await window.brightside.getContinuity());}
+
+$("#newSceneForm").addEventListener("submit",async event=>{
+  event.preventDefault();
+  const input=$("#newSceneName"); const title=input.value.trim(); if(!title)return;
+  renderContinuity(await window.brightside.createScene(title)); input.value="";
+});
+$("#sceneSelect").onchange=async event=>{if(event.target.value)renderContinuity(await window.brightside.activateScene(event.target.value));};
+$("#importCharactersBtn").onclick=async()=>renderContinuity(await window.brightside.importContinuity("character"));
+$("#importLocationsBtn").onclick=async()=>renderContinuity(await window.brightside.importContinuity("location"));
+$("#importSceneRefsBtn").onclick=async()=>renderContinuity(await window.brightside.importContinuity("scene"));
+$("#addElementsBtn").onclick=async()=>{
+  const ids=[...document.querySelectorAll('input[name="continuityAsset"]:checked')].map(input=>input.value);
+  if(!ids.length){$("#activeScenePath").textContent="Vælg mindst én karakter eller location.";return;}
+  renderContinuity(await window.brightside.addElementsToScene(ids));
+};
+$("#openSceneFolderBtn").onclick=()=>window.brightside.openSceneFolder();
+$("#topUpdateBtn").onclick=()=>window.brightside.checkForUpdates();
+window.brightside.onContinuityChanged(data=>renderContinuity(data));
 
 initialize();

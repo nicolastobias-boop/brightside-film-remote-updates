@@ -148,7 +148,7 @@ function setupUpdater({ getSettings, notify }) {
         title: "Ny Brightside Film Remote",
         message: `Version ${nextVersion} er klar.`,
         detail: "Opdateringen erstatter kun selve appen. Login, API-nøgle, projekter og referencer bevares.",
-        buttons: ["Hent og installer", "Senere"],
+        buttons: ["Hent og installer nu", "Senere"],
         defaultId: 0,
         cancelId: 1
       });
@@ -160,7 +160,7 @@ function setupUpdater({ getSettings, notify }) {
         title: "Opdateringen er klar",
         message: `Version ${nextVersion} er hentet og sikkerhedskontrolleret.`,
         detail: "Appen genstarter nu og installerer opdateringen. Dine lokale data bliver liggende.",
-        buttons: ["Genstart og installer", "Senere"],
+        buttons: ["Genstart og færdiggør installationen", "Senere"],
         defaultId: 0,
         cancelId: 1
       });

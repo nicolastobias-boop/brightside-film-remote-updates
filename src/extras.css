@@ -1,2 +1,11 @@
 .checkLabel{display:flex!important;align-items:center;gap:8px!important;color:#c9c6c0!important}.checkLabel input{width:auto}
 .engineSelect{display:flex;align-items:center;gap:8px;font-size:11px;color:#9da0a6}.engineSelect select{flex:1;background:#17181b;color:#f4f4f5;border:1px solid #303238;border-radius:8px;padding:8px}
+
+.topUpdateBtn{margin-right:8px;border:1px solid #ff7654;background:#ff5d36;color:white;padding:8px 12px;font-weight:750;font-size:11px;cursor:pointer;border-radius:4px;white-space:nowrap}
+.topUpdateBtn:disabled{opacity:.65;cursor:wait}.updatePrimary{border:0;background:var(--accent);color:white;padding:9px 12px;font-weight:750;cursor:pointer}
+.sceneCreate{display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:14px}.sceneCreate input,.scenePicker select{width:100%;background:#0e0e10;border:1px solid var(--line);color:var(--text);padding:10px}
+.scenePicker{display:grid;gap:7px;color:var(--muted);font-size:11px;margin-bottom:12px}.assetGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0}.assetGrid.compact{grid-template-columns:repeat(3,minmax(0,1fr))}
+.assetCard{min-width:0;border:1px solid var(--line);background:#101012}.assetCard>img,.assetPlaceholder{display:block;width:100%;aspect-ratio:2.39/1;object-fit:cover;background:#242429}.assetPlaceholder{display:grid;place-items:center;color:var(--muted);font-size:10px;letter-spacing:.15em}
+.assetFooter{display:flex;align-items:center;gap:6px;padding:7px}.assetFooter span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}.assetFooter input{accent-color:var(--accent)}
+.wideAction{width:100%;border:1px solid #5b4038;background:#271a17;color:#ffb199;padding:9px;font-weight:700;cursor:pointer}.wideAction:disabled,.small:disabled{opacity:.4;cursor:not-allowed}
+.fileStack{display:grid;gap:7px;margin-top:10px}.sceneFile{display:flex;align-items:center;gap:8px;background:var(--soft);padding:7px;min-width:0}.sceneFile img{width:58px;aspect-ratio:2.39/1;object-fit:cover}.sceneFile span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}

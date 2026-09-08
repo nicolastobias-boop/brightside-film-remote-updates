@@ -12,10 +12,11 @@
   <header class="topbar">
     <div class="brand"><span class="mark">B</span><strong>BRIGHTSIDE</strong><span>FILM REMOTE</span></div>
     <div class="browserbar"><button id="homeBtn">Higgsfield</button><span id="url">higgsfield.ai</span></div>
+    <button id="topUpdateBtn" class="topUpdateBtn">↓ Hent og installer opdatering</button>
     <button id="settingsBtn" class="iconBtn" aria-label="Indstillinger">⚙</button>
   </header>
   <aside class="sidebar">
-    <nav class="tabs"><button data-tab="chat" class="active">Assistent</button><button data-tab="workflows">Workflows</button><button data-tab="imageLab">Billedmager</button><button data-tab="identity">Identitet</button></nav>
+    <nav class="tabs"><button data-tab="chat" class="active">Assistent</button><button data-tab="continuity">Scener</button><button data-tab="workflows">Workflows</button><button data-tab="imageLab">Billedmager</button><button data-tab="identity">Identitet</button></nav>
     <main id="chat" class="panel active">
       <section class="projectCard"><div><span class="eyebrow">AKTIV PROFIL</span><h1>KESSLER</h1><p>Film · prompts · continuity</p></div><span class="status">LÅST KERNE</span></section>
       <section id="messages" class="messages">
@@ -42,6 +43,35 @@
       </form>
       <section id="imageResults" class="imageResults"></section>
     </main>
+    <main id="continuity" class="panel">
+      <section class="identityHead"><span class="eyebrow">SCENER & KONTINUITET</span><h2>KESSLER-universet</h2><p>Genbrug karakterer og locations på tværs af filmen. Den aktive scene styrer automatisk, hvor prompts og downloads lander.</p></section>
+      <section class="identityBlock">
+        <form id="newSceneForm" class="sceneCreate"><input id="newSceneName" placeholder="Fx: Scene 14 · Omklædningsrummet" required /><button class="send" type="submit">+ Ny scene</button></form>
+        <label class="scenePicker">Aktiv scene<select id="sceneSelect"><option value="">Ingen scene endnu</option></select></label>
+        <div class="row"><p id="activeScenePath" class="hint">Opret en scene for at begynde.</p><button id="openSceneFolderBtn" class="small">Åbn scenemappe</button></div>
+      </section>
+      <section class="identityBlock">
+        <div class="row"><div><h3>Karakterer</h3><p class="hint">Faste ansigter, kostumer, skader og alder.</p></div><button id="importCharactersBtn" class="small">+ Upload</button></div>
+        <div id="characterAssets" class="assetGrid"></div>
+      </section>
+      <section class="identityBlock">
+        <div class="row"><div><h3>Locations</h3><p class="hint">Rum, geografi, lysretning og production design.</p></div><button id="importLocationsBtn" class="small">+ Upload</button></div>
+        <div id="locationAssets" class="assetGrid"></div>
+        <button id="addElementsBtn" class="wideAction">Tilføj valgte elementer til aktiv scene</button>
+      </section>
+      <section class="identityBlock">
+        <div class="row"><div><h3>Scenens referencer</h3><p class="hint">Upload nyt eller genbrug valgte karakterer og locations.</p></div><button id="importSceneRefsBtn" class="small">+ Upload til scene</button></div>
+        <div id="sceneReferences" class="assetGrid compact"></div>
+      </section>
+      <section class="identityBlock">
+        <h3>Work</h3><p class="hint">Prompts, keyframes og Higgsfield-downloads lander automatisk her.</p>
+        <div id="sceneWork" class="fileStack"></div>
+      </section>
+      <section class="identityBlock">
+        <h3>Final</h3><p class="hint">Kun de godkendte elementer, du vil tage videre i produktionen.</p>
+        <div id="sceneFinal" class="fileStack"></div>
+      </section>
+    </main>
     <main id="identity" class="panel">
       <section class="identityHead"><span class="eyebrow">PROJEKTHUKOMMELSE</span><h2>KESSLER</h2><p>Den låste kerne beskytter filmens look. Tilføjede filer udvider profilen uden at erstatte den.</p></section>
       <section class="identityBlock"><h3>Visuel kerne</h3><ul><li>Fast CinemaScope-format · 2.39:1</li><li>Rå dansk bokse-realisme</li><li>Mørk himmel, våd asfalt, gule gadelys</li><li>Tæt, fysisk og motiveret kamera</li><li>Realtid og slowmotion med dramatisk funktion</li><li>Ingen Viking-kliché eller reklamepolering</li></ul></section>
@@ -49,7 +79,7 @@
       <section class="identityBlock"><div class="row"><h3>Lookbooks og referencer</h3><button id="importBtn" class="small">+ Tilføj</button></div><div id="imports" class="imports"></div></section>
     </main>
   </aside>
-  <dialog id="settingsDialog"><form method="dialog"><h2>Indstillinger</h2><label>OpenAI API-nøgle<input id="apiKey" type="password" placeholder="sk-…" autocomplete="off" /></label><label>AI-model<select id="model"><option value="gpt-5.6-terra">GPT-5.6 Terra · anbefalet</option><option value="gpt-5.6-sol">GPT-5.6 Sol · højeste filmkvalitet</option><option value="gpt-5.6-luna">GPT-5.6 Luna · billigst</option><option value="gpt-6-astra">GPT-6 Astra · sværeste opgaver</option></select></label><label class="checkLabel"><input id="autoUpdate" type="checkbox" checked /> Søg automatisk efter nye versioner</label><div class="row"><span id="updateStatus" class="hint">Sikker Brightside-opdateringskanal</span><button id="checkUpdateBtn" type="button" class="small">Søg nu</button></div><p class="hint">Nøglen krypteres lokalt på denne Mac. Higgsfield-login bliver i appens lokale browserprofil.</p><div class="dialogActions"><button value="cancel">Annuller</button><button id="saveSettings" value="default" class="send">Gem</button></div></form></dialog>
+  <dialog id="settingsDialog"><form method="dialog"><h2>Indstillinger</h2><label>OpenAI API-nøgle<input id="apiKey" type="password" placeholder="sk-…" autocomplete="off" /></label><label>AI-model<select id="model"><option value="gpt-5.6-terra">GPT-5.6 Terra · anbefalet</option><option value="gpt-5.6-sol">GPT-5.6 Sol · højeste filmkvalitet</option><option value="gpt-5.6-luna">GPT-5.6 Luna · billigst</option><option value="gpt-6-astra">GPT-6 Astra · sværeste opgaver</option></select></label><label class="checkLabel"><input id="autoUpdate" type="checkbox" checked /> Søg automatisk efter nye versioner</label><div class="row"><span id="updateStatus" class="hint">Sikker Brightside-opdateringskanal</span><button id="checkUpdateBtn" type="button" class="updatePrimary">Hent og installer nyeste version</button></div><p class="hint">Nøglen krypteres lokalt på denne Mac. Higgsfield-login bliver i appens lokale browserprofil.</p><div class="dialogActions"><button value="cancel">Annuller</button><button id="saveSettings" value="default" class="send">Gem</button></div></form></dialog>
   <dialog id="approvalDialog"><div class="approvalIcon">!</div><h2>Godkend generering</h2><p id="approvalText"></p><p class="hint" id="approvalRisk"></p><div class="dialogActions"><button id="denyBtn">Stop</button><button id="approveBtn">Godkend én generering</button><button id="approveTenBtn" class="danger">Godkend 10 genereringer</button></div></dialog>
   <script src="renderer.js"></script>
 </body>

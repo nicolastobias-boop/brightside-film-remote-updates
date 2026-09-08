@@ -19,6 +19,14 @@ const masterDir = () => path.join(app.getPath("movies"), "Brightside Film Remote
 const assetDir = () => path.join(masterDir(), "Genererede billeder");
 const importedDir = () => path.join(masterDir(), "Importerede referencer");
 const promptDir = () => path.join(masterDir(), "Prompts");
+const elementsDir = () => path.join(masterDir(), "Elementer");
+const characterDir = () => path.join(elementsDir(), "Karakterer");
+const locationDir = () => path.join(elementsDir(), "Locations");
+const scenesDir = () => path.join(masterDir(), "Scener");
+const sceneDir = scene => path.join(scenesDir(), scene.folder);
+const sceneRefsDir = scene => path.join(sceneDir(scene), "Referencer");
+const sceneWorkDir = scene => path.join(sceneDir(scene), "Work");
+const sceneFinalDir = scene => path.join(sceneDir(scene), "Final");
 
 function safeFilePart(value) {
   return String(value || "reference").replace(/[^a-z0-9æøå_-]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "reference";
@@ -35,13 +43,30 @@ function uniqueDestination(directory, filename) {
   return destination;
 }
 
+function copyLegacyElements(source, destination) {
+  if (!fs.existsSync(source)) return;
+  for (const entry of fs.readdirSync(source, {withFileTypes:true})) {
+    if (!entry.isFile() || entry.name.startsWith(".")) continue;
+    const target = path.join(destination, entry.name);
+    if (!fs.existsSync(target)) fs.copyFileSync(path.join(source, entry.name), target);
+  }
+}
+
+function ensureSceneFolders(scene) {
+  [sceneDir(scene), sceneRefsDir(scene), sceneWorkDir(scene), sceneFinalDir(scene)]
+    .forEach(directory => fs.mkdirSync(directory, {recursive:true}));
+}
+
 function ensureMasterFolder() {
-  [masterDir(), assetDir(), importedDir(), promptDir(), path.join(masterDir(), "Character sheets"), path.join(masterDir(), "Location maps")]
+  [masterDir(), assetDir(), importedDir(), promptDir(), elementsDir(), characterDir(), locationDir(), scenesDir(), path.join(masterDir(), "Character sheets"), path.join(masterDir(), "Location maps")]
     .forEach(directory => fs.mkdirSync(directory, { recursive: true }));
+  copyLegacyElements(path.join(masterDir(), "Character sheets"), characterDir());
+  copyLegacyElements(path.join(masterDir(), "Location maps"), locationDir());
   const profilePath = path.join(masterDir(), "KESSLER-profil.json");
   if (!fs.existsSync(profilePath)) fs.writeFileSync(profilePath, JSON.stringify(KESSLER_PROFILE, null, 2));
 
   const state = loadState();
+  state.scenes.forEach(ensureSceneFolders);
   let changed = false;
   for (const item of state.imports) {
     if (!item.path || !fs.existsSync(item.path) || !item.path.startsWith(legacyAssetDir())) continue;
@@ -56,21 +81,148 @@ function ensureMasterFolder() {
 function appendPromptLog(userText, assistantText) {
   fs.mkdirSync(promptDir(), { recursive: true });
   const timestamp = new Date().toISOString();
-  fs.appendFileSync(path.join(promptDir(), "Brightside-prompt-log.md"), `\n## ${timestamp}\n\n**Nicolas:** ${userText}\n\n**Brightside:** ${assistantText}\n`);
+  const entry = `\n## ${timestamp}\n\n**Nicolas:** ${userText}\n\n**Brightside:** ${assistantText}\n`;
+  fs.appendFileSync(path.join(promptDir(), "Brightside-prompt-log.md"), entry);
+  const state = loadState();
+  const scene = state.scenes.find(item => item.id === state.activeSceneId);
+  if (scene) {
+    ensureSceneFolders(scene);
+    fs.appendFileSync(path.join(sceneWorkDir(scene), "Prompts.md"), entry);
+  }
 }
 
 function initialState() {
-  return { project: KESSLER_PROFILE, imports: [], model: "gpt-5.6-terra", encryptedApiKey: null, conversation: [], autoUpdate: true, updateFeedUrl: "" };
+  return { project: KESSLER_PROFILE, imports: [], scenes: [], activeSceneId: null, model: "gpt-5.6-terra", encryptedApiKey: null, conversation: [], autoUpdate: true, updateFeedUrl: "" };
 }
 
 function loadState() {
-  try { return {...initialState(), ...JSON.parse(fs.readFileSync(statePath(), "utf8"))}; }
-  catch { return initialState(); }
+  try {
+    const state = {...initialState(), ...JSON.parse(fs.readFileSync(statePath(), "utf8"))};
+    if (!Array.isArray(state.imports)) state.imports = [];
+    if (!Array.isArray(state.scenes)) state.scenes = [];
+    return state;
+  } catch { return initialState(); }
 }
 
 function saveState(next) {
   fs.mkdirSync(path.dirname(statePath()), { recursive: true });
   fs.writeFileSync(statePath(), JSON.stringify(next, null, 2));
+}
+
+function imageThumbnail(filePath) {
+  if (!/\.(jpe?g|png|webp)$/i.test(filePath)) return "";
+  try {
+    const source = nativeImage.createFromPath(filePath);
+    if (source.isEmpty()) return "";
+    const size = source.getSize();
+    const image = size.width > 420 ? source.resize({width:420, quality:"good"}) : source;
+    return image.toDataURL();
+  } catch { return ""; }
+}
+
+function listAssets(directory, category) {
+  if (!fs.existsSync(directory)) return [];
+  return fs.readdirSync(directory, {withFileTypes:true})
+    .filter(entry => entry.isFile() && !entry.name.startsWith("."))
+    .map(entry => {
+      const filePath = path.join(directory, entry.name);
+      return {id:`${category}:${entry.name}`, name:entry.name, category, thumbnail:imageThumbnail(filePath)};
+    });
+}
+
+function activeScene(state = loadState()) {
+  return state.scenes.find(scene => scene.id === state.activeSceneId) || null;
+}
+
+function continuitySnapshot() {
+  const state = loadState();
+  const scene = activeScene(state);
+  if (scene) ensureSceneFolders(scene);
+  return {
+    scenes: state.scenes.map(item => ({id:item.id, title:item.title, folder:item.folder, active:item.id === state.activeSceneId})),
+    activeSceneId: state.activeSceneId,
+    characters: listAssets(characterDir(), "character"),
+    locations: listAssets(locationDir(), "location"),
+    references: scene ? listAssets(sceneRefsDir(scene), "reference") : [],
+    work: scene ? listAssets(sceneWorkDir(scene), "work") : [],
+    final: scene ? listAssets(sceneFinalDir(scene), "final") : []
+  };
+}
+
+function createScene(title) {
+  const state = loadState();
+  const cleanTitle = String(title || "").trim();
+  if (!cleanTitle) throw new Error("Skriv et navn til scenen.");
+  const number = String(state.scenes.length + 1).padStart(3, "0");
+  const scene = {id:`${Date.now()}-${Math.random().toString(36).slice(2,7)}`, title:cleanTitle, folder:`${number}-${safeFilePart(cleanTitle)}`, createdAt:new Date().toISOString()};
+  state.scenes.push(scene);
+  state.activeSceneId = scene.id;
+  ensureSceneFolders(scene);
+  saveState(state);
+  return continuitySnapshot();
+}
+
+async function importContinuityFiles(category) {
+  const state = loadState();
+  const scene = activeScene(state);
+  const destinations = {character:characterDir(), location:locationDir(), scene:scene && sceneRefsDir(scene)};
+  const destinationDirectory = destinations[category];
+  if (!destinationDirectory) throw new Error("Opret eller vælg først en scene.");
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: category === "character" ? "Tilføj karakterer" : category === "location" ? "Tilføj locations" : "Tilføj referencer til scenen",
+    properties:["openFile","multiSelections"],
+    filters:[{name:"Billeder, PDF og noter", extensions:["pdf","txt","md","jpg","jpeg","png","webp"]}]
+  });
+  if (result.canceled) return continuitySnapshot();
+  fs.mkdirSync(destinationDirectory, {recursive:true});
+  for (const source of result.filePaths) {
+    const destination = uniqueDestination(destinationDirectory, path.basename(source));
+    fs.copyFileSync(source, destination);
+  }
+  return continuitySnapshot();
+}
+
+function elementPathFromId(id) {
+  const [category, ...nameParts] = String(id).split(":");
+  const name = path.basename(nameParts.join(":"));
+  if (!name) return null;
+  if (category === "character") return path.join(characterDir(), name);
+  if (category === "location") return path.join(locationDir(), name);
+  return null;
+}
+
+function addElementsToScene(ids) {
+  const state = loadState();
+  const scene = activeScene(state);
+  if (!scene) throw new Error("Opret eller vælg først en scene.");
+  ensureSceneFolders(scene);
+  for (const id of Array.isArray(ids) ? ids : []) {
+    const source = elementPathFromId(id);
+    if (!source || !fs.existsSync(source)) continue;
+    const destination = uniqueDestination(sceneRefsDir(scene), path.basename(source));
+    fs.copyFileSync(source, destination);
+  }
+  return continuitySnapshot();
+}
+
+function moveWorkToFinal(filename) {
+  const state = loadState();
+  const scene = activeScene(state);
+  if (!scene) throw new Error("Vælg først en scene.");
+  const safeName = path.basename(String(filename || ""));
+  const source = path.join(sceneWorkDir(scene), safeName);
+  if (!safeName || !fs.existsSync(source)) throw new Error("Work-filen kunne ikke findes.");
+  const destination = uniqueDestination(sceneFinalDir(scene), safeName);
+  fs.renameSync(source, destination);
+  return continuitySnapshot();
+}
+
+function activeSceneReferencePaths(state) {
+  const scene = activeScene(state);
+  if (!scene || !fs.existsSync(sceneRefsDir(scene))) return [];
+  return fs.readdirSync(sceneRefsDir(scene))
+    .filter(name => /\.(jpe?g|png|webp)$/i.test(name))
+    .map(name => path.join(sceneRefsDir(scene), name));
 }
 
 function getApiKey(state) {
@@ -200,7 +352,12 @@ async function runAssistant(userText, selectedEngine = "auto") {
   const apiKey = getApiKey(state);
   if (!apiKey) throw new Error("Tilføj først din OpenAI API-nøgle under Indstillinger.");
   const client = new OpenAI({apiKey});
-  const imported = state.imports.map(x => `${x.name}: ${x.summary || "visuel reference"}`).join("\n").slice(0, 50000);
+  const scene = activeScene(state);
+  const sceneReferences = scene ? listAssets(sceneRefsDir(scene), "reference").map(item => item.name).join(", ") : "";
+  const imported = [
+    state.imports.map(x => `${x.name}: ${x.summary || "visuel reference"}`).join("\n"),
+    scene ? `AKTIV SCENE: ${scene.title}. Kontinuitetsreferencer: ${sceneReferences || "ingen valgt endnu"}` : "INGEN AKTIV SCENE"
+  ].join("\n").slice(0, 50000);
   const screenshot = await screenshotDataUrl();
   const references = importedReferenceImages(state.imports);
   let input = [
@@ -284,9 +441,10 @@ async function createReferenceImage({brief, kind, ratio, quality, useReferences}
 Create a production-ready ${kind} for film development. User brief: ${brief}
 ${ratio === "cinemascope" ? "Compose strictly for CinemaScope 2.39:1 with safe framing across the full widescreen canvas." : ""}
 This is a still reference asset, not a finished video. Make it useful for identity, continuity, location, costume, props, lighting and later image-to-video prompting. No text labels unless the brief explicitly requests them.`;
-  const referencePaths = useReferences ? state.imports
-    .filter(item => ["jpg", "jpeg", "png", "webp"].includes(item.kind) && fs.existsSync(item.path))
-    .slice(-4).map(item => item.path) : [];
+  const referencePaths = useReferences ? [
+    ...activeSceneReferencePaths(state),
+    ...state.imports.filter(item => ["jpg", "jpeg", "png", "webp"].includes(item.kind) && fs.existsSync(item.path)).map(item => item.path)
+  ].slice(-6) : [];
   const result = referencePaths.length
     ? await client.images.edit({
         model:"gpt-image-2",
@@ -305,8 +463,9 @@ This is a still reference asset, not a finished video. Make it useful for identi
     outputBuffer = sourceImage.crop({x:0, y, width:dimensions.width, height:Math.min(targetHeight, dimensions.height)}).toPNG();
   }
   const b64 = outputBuffer.toString("base64");
-  const category = kind === "character sheet" ? "Character sheets" : kind === "location map" ? "Location maps" : "Genererede billeder";
-  const outputDirectory = path.join(masterDir(), category);
+  const scene = activeScene(state);
+  const category = kind === "character sheet" ? "Karakterer" : kind === "location map" ? "Locations" : scene ? `Scene: ${scene.title} / Work` : "Genererede billeder";
+  const outputDirectory = kind === "character sheet" ? characterDir() : kind === "location map" ? locationDir() : scene ? sceneWorkDir(scene) : assetDir();
   fs.mkdirSync(outputDirectory, {recursive:true});
   const id = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
   const destination = path.join(outputDirectory, `${safeFilePart(kind)}-${id}.png`);
@@ -321,6 +480,17 @@ app.whenReady().then(() => {
   ensureMasterFolder();
   session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === "media"));
   createWindow();
+  const higgsSession = session.fromPartition("persist:higgsfield");
+  higgsSession.on("will-download", (_event, item) => {
+    const state = loadState();
+    const scene = activeScene(state);
+    const destinationDirectory = scene ? sceneWorkDir(scene) : assetDir();
+    fs.mkdirSync(destinationDirectory, {recursive:true});
+    item.setSavePath(uniqueDestination(destinationDirectory, item.getFilename()));
+    item.once("done", (_doneEvent, status) => {
+      if (status === "completed") mainWindow?.webContents.send("continuity:changed", continuitySnapshot());
+    });
+  });
   checkForUpdates = setupUpdater({getSettings:loadState, notify:message => mainWindow?.webContents.send("update:status", message)});
   ipcMain.handle("state:get", () => { const s = loadState(); return {...s, encryptedApiKey:undefined, hasApiKey:Boolean(getApiKey(s)), imports:s.imports.map(({path:_p,...x})=>x), workflows:HIGGSFIELD_WORKFLOWS}; });
   ipcMain.handle("settings:save", (_e, {apiKey, model, autoUpdate, updateFeedUrl}) => { const s=loadState(); if(apiKey) s.encryptedApiKey=safeStorage.encryptString(apiKey).toString("base64"); if(model) s.model=model; if(typeof autoUpdate==="boolean") s.autoUpdate=autoUpdate; if(typeof updateFeedUrl==="string") s.updateFeedUrl=updateFeedUrl.trim(); saveState(s); return {ok:true, hasApiKey:Boolean(getApiKey(s))}; });
@@ -332,6 +502,22 @@ app.whenReady().then(() => {
   ipcMain.handle("higgs:navigate", async (_e, url) => { await higgsView.webContents.loadURL(url); return true; });
   ipcMain.handle("update:check", () => checkForUpdates?.());
   ipcMain.handle("project:open-folder", () => shell.openPath(masterDir()));
+  ipcMain.handle("continuity:get", () => continuitySnapshot());
+  ipcMain.handle("scene:create", (_e, title) => createScene(title));
+  ipcMain.handle("scene:activate", (_e, id) => {
+    const state = loadState();
+    if (!state.scenes.some(scene => scene.id === id)) throw new Error("Scenen kunne ikke findes.");
+    state.activeSceneId = id;
+    saveState(state);
+    return continuitySnapshot();
+  });
+  ipcMain.handle("continuity:import", (_e, category) => importContinuityFiles(category));
+  ipcMain.handle("scene:add-elements", (_e, ids) => addElementsToScene(ids));
+  ipcMain.handle("scene:move-final", (_e, filename) => moveWorkToFinal(filename));
+  ipcMain.handle("scene:open-folder", () => {
+    const scene = activeScene();
+    return shell.openPath(scene ? sceneDir(scene) : scenesDir());
+  });
   ipcMain.on("approval:decision", (_e, decision) => { if(pendingApproval){ pendingApproval(decision); pendingApproval=null; } });
 });
 

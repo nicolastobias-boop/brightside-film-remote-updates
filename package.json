@@ -1,6 +1,6 @@
 {
   "name": "brightside-higgsfield-remote",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Brightside film- og promptassistent med lokal Higgsfield-styring",
   "main": "src/main.js",
   "author": "Brightside Pictures ApS",

@@ -11,9 +11,17 @@ contextBridge.exposeInMainWorld("brightside", {
   navigate: url => ipcRenderer.invoke("higgs:navigate", url),
   checkForUpdates: () => ipcRenderer.invoke("update:check"),
   openProjectFolder: () => ipcRenderer.invoke("project:open-folder"),
+  getContinuity: () => ipcRenderer.invoke("continuity:get"),
+  createScene: title => ipcRenderer.invoke("scene:create", title),
+  activateScene: id => ipcRenderer.invoke("scene:activate", id),
+  importContinuity: category => ipcRenderer.invoke("continuity:import", category),
+  addElementsToScene: ids => ipcRenderer.invoke("scene:add-elements", ids),
+  moveWorkToFinal: filename => ipcRenderer.invoke("scene:move-final", filename),
+  openSceneFolder: () => ipcRenderer.invoke("scene:open-folder"),
   decideApproval: decision => ipcRenderer.send("approval:decision", decision),
   onApproval: callback => ipcRenderer.on("approval:request", (_event, value) => callback(value)),
   onUrl: callback => ipcRenderer.on("higgs:url", (_event, value) => callback(value)),
   onApprovalBudget: callback => ipcRenderer.on("approval:budget", (_event, value) => callback(value)),
-  onUpdateStatus: callback => ipcRenderer.on("update:status", (_event, value) => callback(value))
+  onUpdateStatus: callback => ipcRenderer.on("update:status", (_event, value) => callback(value)),
+  onContinuityChanged: callback => ipcRenderer.on("continuity:changed", (_event, value) => callback(value))
 });
