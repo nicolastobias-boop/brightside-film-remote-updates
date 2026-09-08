@@ -8,7 +8,7 @@
   "scripts": {
     "start": "electron .",
     "check": "node --check src/main.js && node --check src/preload.js && node --check src/renderer.js && node --test test/*.test.js",
-    "dist:mac": "electron-builder --mac zip --arm64"
+    "dist:mac": "electron-builder --mac zip --arm64 --publish never"
   },
   "dependencies": {
     "electron-updater": "^6.6.8",
