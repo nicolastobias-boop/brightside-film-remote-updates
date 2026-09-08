@@ -49,6 +49,7 @@ async function initialize() {
   renderImports(appState.imports || []);
   renderWorkflows(appState.workflows || []);
   await refreshContinuity();
+  await refreshAiKnowledge();
 }
 
 document.querySelectorAll("[data-tab]").forEach(btn => btn.addEventListener("click", () => {
@@ -169,5 +170,39 @@ $("#addElementsBtn").onclick=async()=>{
 $("#openSceneFolderBtn").onclick=()=>window.brightside.openSceneFolder();
 $("#topUpdateBtn").onclick=()=>window.brightside.checkForUpdates();
 window.brightside.onContinuityChanged(data=>renderContinuity(data));
+
+function sourceLabel(value){return value==="claude"?"Claude":value==="higgsfield"?"Higgsfield":"Anden AI";}
+
+function renderAiKnowledge(items){
+  const root=$("#aiKnowledgeList");root.textContent="";
+  if(!items.length){const empty=document.createElement("p");empty.className="hint";empty.textContent="Der er endnu ikke importeret AI-viden.";root.appendChild(empty);return;}
+  items.forEach(item=>{
+    const card=document.createElement("article");card.className="knowledgeCard";
+    const top=document.createElement("div");top.className="row";
+    const title=document.createElement("strong");title.textContent=item.name;
+    const tag=document.createElement("span");tag.className="knowledgeTag";tag.textContent=sourceLabel(item.source);
+    top.append(title,tag);
+    const excerpt=document.createElement("p");excerpt.textContent=item.excerpt||"Visuel reference";
+    const remove=document.createElement("button");remove.className="knowledgeRemove";remove.textContent="Fjern";remove.onclick=async()=>renderAiKnowledge(await window.brightside.removeAiKnowledge(item.id));
+    card.append(top,excerpt,remove);root.appendChild(card);
+  });
+}
+
+async function refreshAiKnowledge(){renderAiKnowledge(await window.brightside.getAiKnowledge());}
+
+$("#importAiBtn").onclick=async()=>{
+  $("#aiKnowledgeStatus").textContent="Importerer og læser materialet…";
+  try{const items=await window.brightside.importAiKnowledge($("#aiSource").value);renderAiKnowledge(items);$("#aiKnowledgeStatus").textContent="Viden er importeret og indgår nu i KESSLER-assistenten.";}
+  catch(error){$("#aiKnowledgeStatus").textContent=`Importen fejlede: ${error.message}`;}
+};
+$("#saveAiTextBtn").onclick=async()=>{
+  const text=$("#aiKnowledgeText").value.trim();
+  if(!text){$("#aiKnowledgeStatus").textContent="Indsæt først samtalen eller promptloggen.";return;}
+  try{
+    const items=await window.brightside.saveAiKnowledgeText({sourceType:$("#aiSource").value,title:$("#aiKnowledgeTitle").value.trim(),text});
+    renderAiKnowledge(items);$("#aiKnowledgeText").value="";$("#aiKnowledgeTitle").value="";
+    $("#aiKnowledgeStatus").textContent="Teksten er gemt lokalt og indgår nu i projektviden.";
+  }catch(error){$("#aiKnowledgeStatus").textContent=`Kunne ikke gemme: ${error.message}`;}
+};
 
 initialize();

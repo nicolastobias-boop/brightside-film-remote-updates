@@ -1,6 +1,7 @@
 const { app, BrowserWindow, WebContentsView, ipcMain, dialog, safeStorage, session, nativeImage, shell } = require("electron");
 const fs = require("fs");
 const path = require("path");
+const { execFileSync } = require("child_process");
 const OpenAI = require("openai");
 const { toFile } = require("openai");
 const pdf = require("pdf-parse");
@@ -23,6 +24,7 @@ const elementsDir = () => path.join(masterDir(), "Elementer");
 const characterDir = () => path.join(elementsDir(), "Karakterer");
 const locationDir = () => path.join(elementsDir(), "Locations");
 const scenesDir = () => path.join(masterDir(), "Scener");
+const aiKnowledgeDir = () => path.join(masterDir(), "AI-viden");
 const sceneDir = scene => path.join(scenesDir(), scene.folder);
 const sceneRefsDir = scene => path.join(sceneDir(scene), "Referencer");
 const sceneWorkDir = scene => path.join(sceneDir(scene), "Work");
@@ -58,7 +60,7 @@ function ensureSceneFolders(scene) {
 }
 
 function ensureMasterFolder() {
-  [masterDir(), assetDir(), importedDir(), promptDir(), elementsDir(), characterDir(), locationDir(), scenesDir(), path.join(masterDir(), "Character sheets"), path.join(masterDir(), "Location maps")]
+  [masterDir(), assetDir(), importedDir(), promptDir(), elementsDir(), characterDir(), locationDir(), scenesDir(), aiKnowledgeDir(), path.join(masterDir(), "Character sheets"), path.join(masterDir(), "Location maps")]
     .forEach(directory => fs.mkdirSync(directory, { recursive: true }));
   copyLegacyElements(path.join(masterDir(), "Character sheets"), characterDir());
   copyLegacyElements(path.join(masterDir(), "Location maps"), locationDir());
@@ -92,13 +94,14 @@ function appendPromptLog(userText, assistantText) {
 }
 
 function initialState() {
-  return { project: KESSLER_PROFILE, imports: [], scenes: [], activeSceneId: null, model: "gpt-5.6-terra", encryptedApiKey: null, conversation: [], autoUpdate: true, updateFeedUrl: "" };
+  return { project: KESSLER_PROFILE, imports: [], aiKnowledge: [], scenes: [], activeSceneId: null, model: "gpt-5.6-terra", encryptedApiKey: null, conversation: [], autoUpdate: true, updateFeedUrl: "" };
 }
 
 function loadState() {
   try {
     const state = {...initialState(), ...JSON.parse(fs.readFileSync(statePath(), "utf8"))};
     if (!Array.isArray(state.imports)) state.imports = [];
+    if (!Array.isArray(state.aiKnowledge)) state.aiKnowledge = [];
     if (!Array.isArray(state.scenes)) state.scenes = [];
     return state;
   } catch { return initialState(); }
@@ -223,6 +226,118 @@ function activeSceneReferencePaths(state) {
   return fs.readdirSync(sceneRefsDir(scene))
     .filter(name => /\.(jpe?g|png|webp)$/i.test(name))
     .map(name => path.join(sceneRefsDir(scene), name));
+}
+
+function sourceFolder(sourceType) {
+  const names = {claude:"Claude", higgsfield:"Higgsfield", other:"Andre AI"};
+  const folder = names[sourceType] || names.other;
+  const directory = path.join(aiKnowledgeDir(), folder);
+  fs.mkdirSync(directory, {recursive:true});
+  return directory;
+}
+
+function flattenJsonText(value, output = [], depth = 0) {
+  if (output.join("\n").length > 60000 || depth > 30) return output;
+  if (typeof value === "string") {
+    const clean = value.trim();
+    if (clean.length > 1) output.push(clean);
+  } else if (Array.isArray(value)) {
+    value.forEach(item => flattenJsonText(item, output, depth + 1));
+  } else if (value && typeof value === "object") {
+    Object.values(value).forEach(item => flattenJsonText(item, output, depth + 1));
+  }
+  return output;
+}
+
+function walkKnowledgeFiles(root) {
+  const files = [];
+  for (const entry of fs.readdirSync(root, {withFileTypes:true})) {
+    const full = path.join(root, entry.name);
+    if (entry.isDirectory()) files.push(...walkKnowledgeFiles(full));
+    else if (/\.(json|md|txt|pdf|csv|html?|jpe?g|png|webp)$/i.test(entry.name)) files.push(full);
+  }
+  return files;
+}
+
+async function extractKnowledgeText(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".pdf") {
+    const parsed = await pdf(fs.readFileSync(filePath));
+    return parsed.text.slice(0, 60000);
+  }
+  if (ext === ".json") {
+    try { return flattenJsonText(JSON.parse(fs.readFileSync(filePath, "utf8"))).join("\n").slice(0, 60000); }
+    catch { return fs.readFileSync(filePath, "utf8").slice(0, 60000); }
+  }
+  if ([".txt",".md",".csv",".html",".htm"].includes(ext)) {
+    let text = fs.readFileSync(filePath, "utf8");
+    if (ext === ".html" || ext === ".htm") text = text.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ");
+    return text.replace(/\s+/g, " ").trim().slice(0, 60000);
+  }
+  return "Visuel reference importeret fra en anden AI-session.";
+}
+
+async function registerKnowledgeFile(sourcePath, sourceType, state) {
+  const ext = path.extname(sourcePath).toLowerCase();
+  const destination = uniqueDestination(sourceFolder(sourceType), path.basename(sourcePath));
+  fs.copyFileSync(sourcePath, destination);
+  const text = await extractKnowledgeText(destination);
+  const item = {id:`${Date.now()}-${Math.random().toString(36).slice(2,8)}`, source:sourceType, name:path.basename(sourcePath), path:destination, summary:text, importedAt:new Date().toISOString()};
+  state.aiKnowledge.push(item);
+  if ([".jpg",".jpeg",".png",".webp"].includes(ext)) {
+    state.imports.push({id:item.id, name:item.name, path:destination, kind:ext.slice(1), summary:`Visuel reference fra ${sourceType}: ${item.name}`});
+  }
+}
+
+async function importAiKnowledge(sourceType) {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title:"Importér viden fra Claude, Higgsfield eller en anden AI",
+    properties:["openFile","multiSelections"],
+    filters:[{name:"AI-eksport, chats, prompts og referencer", extensions:["zip","json","md","txt","pdf","csv","html","htm","jpg","jpeg","png","webp"]}]
+  });
+  if (result.canceled) return aiKnowledgeSnapshot();
+  const state = loadState();
+  for (const source of result.filePaths) {
+    if (path.extname(source).toLowerCase() === ".zip") {
+      const temp = fs.mkdtempSync(path.join(app.getPath("temp"), "brightside-ai-import-"));
+      try {
+        execFileSync("/usr/bin/ditto", ["-x","-k",source,temp]);
+        for (const file of walkKnowledgeFiles(temp)) await registerKnowledgeFile(file, sourceType, state);
+      } finally { fs.rmSync(temp, {recursive:true, force:true}); }
+    } else await registerKnowledgeFile(source, sourceType, state);
+  }
+  saveState(state);
+  return aiKnowledgeSnapshot();
+}
+
+function saveAiKnowledgeText({sourceType, title, text}) {
+  const cleanText = String(text || "").trim();
+  if (!cleanText) throw new Error("Indsæt først samtalen eller prompt-viden.");
+  const state = loadState();
+  const name = `${safeFilePart(title || "AI-samtale")}-${Date.now()}.md`;
+  const destination = path.join(sourceFolder(sourceType), name);
+  fs.writeFileSync(destination, cleanText);
+  state.aiKnowledge.push({id:`${Date.now()}-${Math.random().toString(36).slice(2,8)}`, source:sourceType, name, path:destination, summary:cleanText.slice(0,60000), importedAt:new Date().toISOString()});
+  saveState(state);
+  return aiKnowledgeSnapshot();
+}
+
+function aiKnowledgeSnapshot() {
+  const state = loadState();
+  return state.aiKnowledge.map(item => ({
+    id:item.id, source:item.source, name:item.name, importedAt:item.importedAt,
+    excerpt:String(item.summary || "").replace(/\s+/g, " ").slice(0,240)
+  })).reverse();
+}
+
+function removeAiKnowledge(id) {
+  const state = loadState();
+  const item = state.aiKnowledge.find(entry => entry.id === id);
+  if (item?.path && item.path.startsWith(aiKnowledgeDir()) && fs.existsSync(item.path)) fs.unlinkSync(item.path);
+  state.aiKnowledge = state.aiKnowledge.filter(entry => entry.id !== id);
+  state.imports = state.imports.filter(entry => entry.id !== id);
+  saveState(state);
+  return aiKnowledgeSnapshot();
 }
 
 function getApiKey(state) {
@@ -354,8 +469,10 @@ async function runAssistant(userText, selectedEngine = "auto") {
   const client = new OpenAI({apiKey});
   const scene = activeScene(state);
   const sceneReferences = scene ? listAssets(sceneRefsDir(scene), "reference").map(item => item.name).join(", ") : "";
+  const externalKnowledge = state.aiKnowledge.map(item => `[${item.source.toUpperCase()} · ${item.name}]\n${item.summary || ""}`).join("\n\n").slice(-80000);
   const imported = [
     state.imports.map(x => `${x.name}: ${x.summary || "visuel reference"}`).join("\n"),
+    externalKnowledge ? `IMPORTERET AI-VIDEN FRA CLAUDE/HIGGSFIELD/ANDRE:\n${externalKnowledge}` : "INGEN IMPORTERET AI-VIDEN",
     scene ? `AKTIV SCENE: ${scene.title}. Kontinuitetsreferencer: ${sceneReferences || "ingen valgt endnu"}` : "INGEN AKTIV SCENE"
   ].join("\n").slice(0, 50000);
   const screenshot = await screenshotDataUrl();
@@ -502,6 +619,10 @@ app.whenReady().then(() => {
   ipcMain.handle("higgs:navigate", async (_e, url) => { await higgsView.webContents.loadURL(url); return true; });
   ipcMain.handle("update:check", () => checkForUpdates?.());
   ipcMain.handle("project:open-folder", () => shell.openPath(masterDir()));
+  ipcMain.handle("knowledge:get", () => aiKnowledgeSnapshot());
+  ipcMain.handle("knowledge:import", (_e, sourceType) => importAiKnowledge(sourceType));
+  ipcMain.handle("knowledge:save-text", (_e, payload) => saveAiKnowledgeText(payload));
+  ipcMain.handle("knowledge:remove", (_e, id) => removeAiKnowledge(id));
   ipcMain.handle("continuity:get", () => continuitySnapshot());
   ipcMain.handle("scene:create", (_e, title) => createScene(title));
   ipcMain.handle("scene:activate", (_e, id) => {
