@@ -1,0 +1,34 @@
+{
+  "name": "brightside-higgsfield-remote",
+  "version": "0.3.0",
+  "description": "Brightside film- og promptassistent med lokal Higgsfield-styring",
+  "main": "src/main.js",
+  "author": "Brightside Pictures ApS",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/renderer.js && node --test test/*.test.js",
+    "dist:mac": "electron-builder --mac zip --arm64"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.8",
+    "openai": "^5.19.1",
+    "pdf-parse": "^1.1.1"
+  },
+  "devDependencies": {
+    "electron": "^38.1.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "pictures.brightside.higgsfieldremote",
+    "productName": "Brightside Film Remote",
+    "asar": true,
+    "files": ["src/**/*", "assets/**/*", "package.json"],
+    "mac": {
+      "category": "public.app-category.video",
+      "target": [{"target": "zip", "arch": ["arm64"]}],
+      "hardenedRuntime": false,
+      "identity": null
+    }
+  }
+}
