@@ -1,0 +1,29 @@
+BRIGHTSIDE PICTURES
+KESSLER · FILM REMOTE
+
+EN HILSEN FRA NICOLAS
+
+Velkommen til Brightside Film Remote.
+
+INSTALLATION PÅ MAC
+
+1. Træk “Brightside Film Remote” over på mappen “Applications / Programmer”.
+2. Vent til kopieringen er færdig.
+3. Højreklik på appen i Programmer, og vælg “Åbn”.
+4. Log ind i Higgsfield én gang. Login gemmes kun lokalt på denne Mac.
+
+HVIS MACOS STADIG BLOKERER APPEN
+
+Åbn programmet Terminal, kopiér hele linjen nedenfor, indsæt den og tryk Retur:
+
+xattr -dr com.apple.quarantine "/Applications/Brightside Film Remote.app"
+
+Åbn derefter Brightside Film Remote fra Programmer.
+
+Du skal ikke installere GitHub eller GitHub Desktop.
+Du skal ikke skrive sudo foran kommandoen.
+
+KESSLER-STANDARD
+CinemaScope 2.39:1 · 25 fps
+
+Brightside Pictures

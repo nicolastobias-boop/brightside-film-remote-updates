@@ -1,6 +1,6 @@
 {
   "name": "brightside-higgsfield-remote",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "Brightside film- og promptassistent med lokal Higgsfield-styring",
   "main": "src/main.js",
   "author": "Brightside Pictures ApS",
@@ -49,7 +49,29 @@
     },
     "dmg": {
       "title": "Brightside Film Remote",
-      "backgroundColor": "#111111"
+      "backgroundColor": "#111111",
+      "window": {
+        "width": 560,
+        "height": 470
+      },
+      "contents": [
+        {
+          "x": 140,
+          "y": 190
+        },
+        {
+          "x": 420,
+          "y": 190,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 280,
+          "y": 380,
+          "type": "file",
+          "path": "build/INSTALLATION.txt"
+        }
+      ]
     }
   }
 }

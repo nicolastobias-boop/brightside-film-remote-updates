@@ -100,7 +100,7 @@ function appendPromptLog(userText, assistantText) {
 }
 
 function initialState() {
-  return { project: KESSLER_PROFILE, imports: [], aiKnowledge: [], scenes: [], activeSceneId: null, currentUserRole: "admin", currentUserName: "Nicolas", onboardingCompleted: false, teamMessages: [], productionPlan: [], editorName: "Allan", editorDeliveryDir: "", editorDeliveries: [], privateAssets: {}, model: "gpt-5.6-terra", encryptedApiKey: null, conversation: [], autoUpdate: true, updateFeedUrl: "" };
+  return { project: KESSLER_PROFILE, imports: [], aiKnowledge: [], scenes: [], activeSceneId: null, currentUserRole: "team", currentUserName: "Teammedlem", onboardingCompleted: false, teamMessages: [], productionPlan: [], editorName: "Allan", editorDeliveryDir: "", editorDeliveries: [], privateAssets: {}, model: "gpt-5.6-terra", encryptedApiKey: null, conversation: [], autoUpdate: true, updateFeedUrl: "" };
 }
 
 function loadState() {

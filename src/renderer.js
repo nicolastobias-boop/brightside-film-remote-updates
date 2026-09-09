@@ -246,5 +246,5 @@ $("#teamFab").onclick=()=>$("#teamPanel").classList.toggle("open");$("#teamClose
 $("#teamComposer").onsubmit=async event=>{event.preventDefault();const input=$("#teamInput"),value=input.value.trim();if(!value)return;input.value="";renderTeam(await window.brightside.sendTeamMessage(value));};
 $("#teamAttach").onclick=async()=>renderTeam(await window.brightside.attachTeamFiles());
 $("#copyTerminalBtn").onclick=async()=>{const command=`xattr -dr com.apple.quarantine "/Applications/Brightside Film Remote.app"`;await navigator.clipboard.writeText(command);$("#copyTerminalBtn").textContent="Kopieret";};
-setTimeout(()=>{$("#brandSplash")?.classList.add("done");setTimeout(()=>$("#brandSplash")?.remove(),650);},1500);
+setTimeout(()=>{$("#brandSplash")?.classList.add("done");setTimeout(()=>$("#brandSplash")?.remove(),650);},2500);
 initialize();
