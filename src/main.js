@@ -33,6 +33,8 @@ const sceneFinalDir = scene => path.join(sceneDir(scene), "Final");
 const localEditorDeliveryDir = () => path.join(masterDir(), "Godkendt til Allan");
 const teamDir = () => path.join(masterDir(), "Team");
 const teamAttachmentsDir = () => path.join(teamDir(), "Vedhæftninger");
+const productionDir = () => path.join(masterDir(), "Produktion");
+const productionPlanPath = () => path.join(productionDir(), "KESSLER-arbejdsplan.json");
 
 function safeFilePart(value) {
   return String(value || "reference").replace(/[^a-z0-9æøå_-]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "reference";
@@ -64,7 +66,7 @@ function ensureSceneFolders(scene) {
 }
 
 function ensureMasterFolder() {
-  [masterDir(), assetDir(), importedDir(), promptDir(), elementsDir(), characterDir(), locationDir(), scenesDir(), aiKnowledgeDir(), localEditorDeliveryDir(), teamDir(), teamAttachmentsDir(), path.join(masterDir(), "Character sheets"), path.join(masterDir(), "Location maps")]
+  [masterDir(), assetDir(), importedDir(), promptDir(), elementsDir(), characterDir(), locationDir(), scenesDir(), aiKnowledgeDir(), localEditorDeliveryDir(), teamDir(), teamAttachmentsDir(), productionDir(), path.join(masterDir(), "Character sheets"), path.join(masterDir(), "Location maps")]
     .forEach(directory => fs.mkdirSync(directory, { recursive: true }));
   copyLegacyElements(path.join(masterDir(), "Character sheets"), characterDir());
   copyLegacyElements(path.join(masterDir(), "Location maps"), locationDir());
@@ -98,7 +100,7 @@ function appendPromptLog(userText, assistantText) {
 }
 
 function initialState() {
-  return { project: KESSLER_PROFILE, imports: [], aiKnowledge: [], scenes: [], activeSceneId: null, currentUserRole: "admin", currentUserName: "Nicolas", onboardingCompleted: false, teamMessages: [], editorName: "Allan", editorDeliveryDir: "", editorDeliveries: [], privateAssets: {}, model: "gpt-5.6-terra", encryptedApiKey: null, conversation: [], autoUpdate: true, updateFeedUrl: "" };
+  return { project: KESSLER_PROFILE, imports: [], aiKnowledge: [], scenes: [], activeSceneId: null, currentUserRole: "admin", currentUserName: "Nicolas", onboardingCompleted: false, teamMessages: [], productionPlan: [], editorName: "Allan", editorDeliveryDir: "", editorDeliveries: [], privateAssets: {}, model: "gpt-5.6-terra", encryptedApiKey: null, conversation: [], autoUpdate: true, updateFeedUrl: "" };
 }
 
 function loadState() {
@@ -109,6 +111,7 @@ function loadState() {
     if (!Array.isArray(state.scenes)) state.scenes = [];
     if (!Array.isArray(state.editorDeliveries)) state.editorDeliveries = [];
     if (!Array.isArray(state.teamMessages)) state.teamMessages = [];
+    if (!Array.isArray(state.productionPlan)) state.productionPlan = [];
     if (!state.privateAssets || typeof state.privateAssets !== "object") state.privateAssets = {};
     return state;
   } catch { return initialState(); }
@@ -233,6 +236,53 @@ function moveWorkToFinal(filename) {
   fs.renameSync(source, destination);
   return continuitySnapshot();
 }
+
+function persistProductionPlan(state) {
+  fs.mkdirSync(productionDir(),{recursive:true});
+  fs.writeFileSync(productionPlanPath(),JSON.stringify({project:"KESSLER",frameRate:25,aspectRatio:"2.39:1",updatedAt:new Date().toISOString(),items:state.productionPlan},null,2));
+}
+function productionSnapshot() {
+  const state=loadState(),items=state.productionPlan.slice().sort((a,b)=>String(a.deadline||"9999").localeCompare(String(b.deadline||"9999")));
+  return {items,currentUserRole:state.currentUserRole||"admin",summary:{total:items.length,made:items.filter(x=>x.made).length,approved:items.filter(x=>x.approved).length,delivered:items.filter(x=>x.delivered).length}};
+}
+function normalizeHeader(value){return String(value||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"");}
+function parseDelimited(text,delimiter) {
+  const rows=[];let row=[],cell="",quoted=false;
+  for(let i=0;i<text.length;i++){const ch=text[i];if(ch==='"'&&quoted&&text[i+1]==='"'){cell+='"';i++;}else if(ch==='"'){quoted=!quoted;}else if(ch===delimiter&&!quoted){row.push(cell.trim());cell="";}else if((ch==="\n"||ch==="\r")&&!quoted){if(ch==="\r"&&text[i+1]==="\n")i++;row.push(cell.trim());if(row.some(Boolean))rows.push(row);row=[];cell="";}else cell+=ch;}
+  row.push(cell.trim());if(row.some(Boolean))rows.push(row);return rows;
+}
+function decodeXml(value){return String(value||"").replace(/<[^>]+>/g,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'");}
+function xlsxRows(filePath) {
+  const list=execFileSync("/usr/bin/unzip",["-Z1",filePath],{encoding:"utf8"}).split(/\r?\n/);
+  const sheet=list.find(x=>/^xl\/worksheets\/sheet1\.xml$/i.test(x))||list.find(x=>/^xl\/worksheets\/sheet\d+\.xml$/i.test(x));if(!sheet)throw new Error("Excel-filen har intet læsbart ark.");
+  let shared=[];if(list.includes("xl/sharedStrings.xml")){const xml=execFileSync("/usr/bin/unzip",["-p",filePath,"xl/sharedStrings.xml"],{encoding:"utf8"});shared=[...xml.matchAll(/<si[\s\S]*?<\/si>/g)].map(m=>decodeXml(m[0]));}
+  const xml=execFileSync("/usr/bin/unzip",["-p",filePath,sheet],{encoding:"utf8"}),rows=[];
+  for(const rm of xml.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)){const values=[];for(const cm of rm[1].matchAll(/<c([^>]*)>([\s\S]*?)<\/c>/g)){const attrs=cm[1],body=cm[2],ref=(attrs.match(/r="([A-Z]+)\d+"/)||[])[1]||"A";let col=0;for(const ch of ref)col=col*26+ch.charCodeAt(0)-64;col--;const raw=(body.match(/<v[^>]*>([\s\S]*?)<\/v>/)||body.match(/<t[^>]*>([\s\S]*?)<\/t>/)||[])[1]||"";values[col]=/t="s"/.test(attrs)?shared[Number(raw)]||"":decodeXml(raw);}if(values.some(Boolean))rows.push(values);}
+  return rows;
+}
+function normalizeDeadline(value){const raw=String(value||"").trim();if(/^\d{5}(\.\d+)?$/.test(raw)){const date=new Date((Number(raw)-25569)*86400000);return Number.isNaN(date.getTime())?raw:date.toISOString().slice(0,16);}return raw;}
+function rowsToPlan(rows) {
+  if(rows.length<2)return[];const headers=rows[0].map(normalizeHeader);
+  const find=(names)=>headers.findIndex(h=>names.includes(h));
+  const ix={title:find(["titel","title","generation","generering","element","opgave","shot"]),scene:find(["scene","scenenummer","scenenavn"]),assignedTo:find(["ansvarlig","person","hvem","assignedto","owner","artist"]),engine:find(["engine","motor","workflow","model"]),deadline:find(["deadline","levering","leveringsdato","dato","duedate"]),status:find(["status"]),notes:find(["noter","note","beskrivelse","description"])};
+  return rows.slice(1).filter(r=>r.some(Boolean)).map(r=>{const status=String(ix.status>=0?r[ix.status]||"":"").toLowerCase();return{id:`${Date.now()}-${Math.random().toString(36).slice(2,8)}`,title:String(r[ix.title]||r[0]||"Nyt element"),scene:String(ix.scene>=0?r[ix.scene]||"":""),assignedTo:String(ix.assignedTo>=0?r[ix.assignedTo]||"":""),engine:String(ix.engine>=0?r[ix.engine]||"":""),deadline:normalizeDeadline(ix.deadline>=0?r[ix.deadline]||"":""),notes:String(ix.notes>=0?r[ix.notes]||"":""),made:/lavet|done|færdig/.test(status),approved:/godkendt|approved/.test(status),delivered:/leveret|sendt|delivered/.test(status),privateOnly:false,createdAt:new Date().toISOString()};});
+}
+async function importProductionPlan() {
+  const result=await dialog.showOpenDialog(mainWindow,{title:"Importér KESSLER-arbejdsplan",properties:["openFile"],filters:[{name:"Arbejdsplan",extensions:["xlsx","csv","tsv","json"]}]});if(result.canceled)return productionSnapshot();
+  const file=result.filePaths[0],ext=path.extname(file).toLowerCase();let rows=[];
+  if(ext===".xlsx")rows=xlsxRows(file);else if(ext===".json"){const parsed=JSON.parse(fs.readFileSync(file,"utf8"));const source=Array.isArray(parsed)?parsed:(parsed.items||[]);rows=[["Titel","Scene","Ansvarlig","Engine","Deadline","Status","Noter"],...source.map(x=>[x.title||x.titel,x.scene,x.assignedTo||x.ansvarlig,x.engine,x.deadline,x.status||((x.delivered&&"Leveret")||(x.approved&&"Godkendt")||(x.made&&"Lavet")||""),x.notes||x.noter])];}else{const text=fs.readFileSync(file,"utf8"),delimiter=ext===".tsv"?"\t":((text.split("\n")[0].match(/;/g)||[]).length>(text.split("\n")[0].match(/,/g)||[]).length?";":",");rows=parseDelimited(text,delimiter);}
+  const imported=rowsToPlan(rows);const state=loadState();state.productionPlan.push(...imported);saveState(state);persistProductionPlan(state);return productionSnapshot();
+}
+function createProductionItem(payload) {
+  const state=loadState(),title=String(payload?.title||"").trim();if(!title)throw new Error("Skriv et navn til elementet.");
+  state.productionPlan.push({id:`${Date.now()}-${Math.random().toString(36).slice(2,8)}`,title,scene:String(payload.scene||""),assignedTo:String(payload.assignedTo||""),engine:String(payload.engine||""),deadline:String(payload.deadline||""),notes:String(payload.notes||""),made:false,approved:false,delivered:false,privateOnly:Boolean(payload.privateOnly),createdAt:new Date().toISOString()});saveState(state);persistProductionPlan(state);return productionSnapshot();
+}
+function updateProductionItem({id,field,value}) {
+  const allowed=["title","scene","assignedTo","engine","deadline","notes","made","approved","delivered","privateOnly"];if(!allowed.includes(field))throw new Error("Ugyldigt felt.");
+  const state=loadState();if(field==="privateOnly")assertAdmin(state);const item=state.productionPlan.find(x=>x.id===id);if(!item)throw new Error("Elementet findes ikke.");item[field]=["made","approved","delivered","privateOnly"].includes(field)?Boolean(value):String(value||"");item.updatedAt=new Date().toISOString();saveState(state);persistProductionPlan(state);return productionSnapshot();
+}
+function removeProductionItem(id){const state=loadState();assertAdmin(state);state.productionPlan=state.productionPlan.filter(x=>x.id!==id);saveState(state);persistProductionPlan(state);return productionSnapshot();}
+function openProductionFolder(){fs.mkdirSync(productionDir(),{recursive:true});return shell.openPath(productionDir());}
 
 function teamSnapshot() {
   const state=loadState();
@@ -683,6 +733,12 @@ app.whenReady().then(() => {
   ipcMain.handle("state:get", () => { const s = loadState(); return {...s, encryptedApiKey:undefined, hasApiKey:Boolean(getApiKey(s)), imports:s.imports.map(({path:_p,...x})=>x), workflows:HIGGSFIELD_WORKFLOWS}; });
   ipcMain.handle("settings:save", (_e, {apiKey, model, autoUpdate, updateFeedUrl}) => { const s=loadState(); if(apiKey) s.encryptedApiKey=safeStorage.encryptString(apiKey).toString("base64"); if(model) s.model=model; if(typeof autoUpdate==="boolean") s.autoUpdate=autoUpdate; if(typeof updateFeedUrl==="string") s.updateFeedUrl=updateFeedUrl.trim(); saveState(s); return {ok:true, hasApiKey:Boolean(getApiKey(s))}; });
   ipcMain.handle("onboarding:complete", (_e, name) => { const s=loadState(); if(String(name||"").trim()) s.currentUserName=String(name).trim(); if(!s.deviceId) s.deviceId=`${Date.now()}-${Math.random().toString(36).slice(2,8)}`; s.onboardingCompleted=true; saveState(s); return {ok:true}; });
+  ipcMain.handle("production:get", () => productionSnapshot());
+  ipcMain.handle("production:import", () => importProductionPlan());
+  ipcMain.handle("production:create", (_e, payload) => createProductionItem(payload));
+  ipcMain.handle("production:update", (_e, payload) => updateProductionItem(payload));
+  ipcMain.handle("production:remove", (_e, id) => removeProductionItem(id));
+  ipcMain.handle("production:open-folder", () => openProductionFolder());
   ipcMain.handle("team:get", () => teamSnapshot());
   ipcMain.handle("team:profile", (_e, name) => saveTeamProfile(name));
   ipcMain.handle("team:send", (_e, text) => sendTeamMessage(text));

@@ -44,6 +44,18 @@ function renderWorkflows(items) {
 }
 
 
+
+function deadlineClass(value,delivered){if(!value||delivered)return"";const diff=new Date(value).getTime()-Date.now();return diff<0?"overdue":diff<86400000?"dueSoon":"";}
+function renderProduction(data){
+  $("#planSummary").textContent=`${data.summary.total} elementer · ${data.summary.made} lavet · ${data.summary.approved} godkendt · ${data.summary.delivered} leveret`;
+  const root=$("#productionBoard");root.textContent="";if(!data.items.length){const empty=document.createElement("section");empty.className="identityBlock";empty.innerHTML="<h3>Ingen elementer endnu</h3><p class='hint'>Importér planen eller opret det første element ovenfor.</p>";root.appendChild(empty);return;}
+  data.items.forEach(item=>{const card=document.createElement("article");card.className=`planCard ${deadlineClass(item.deadline,item.delivered)}`;
+    const head=document.createElement("div");head.className="row";const title=document.createElement("div");title.className="planTitle";const strong=document.createElement("strong");strong.textContent=item.title;const meta=document.createElement("span");meta.textContent=[item.scene,item.assignedTo,item.engine].filter(Boolean).join(" · ")||"Ikke fordelt";title.append(strong,meta);const deadline=document.createElement("span");deadline.className="deadline";deadline.textContent=item.deadline?`Til Allan: ${new Date(item.deadline).toLocaleString("da-DK")}`:"Ingen deadline";head.append(title,deadline);
+    const checks=document.createElement("div");checks.className="planChecks";for(const [field,label] of [["made","Lavet"],["approved","Godkendt"],["delivered","Leveret til Allan"],["privateOnly","Kun hos mig"]]){const wrap=document.createElement("label");const input=document.createElement("input");input.type="checkbox";input.checked=Boolean(item[field]);input.disabled=field==="privateOnly"&&data.currentUserRole!=="admin";input.onchange=async()=>renderProduction(await window.brightside.updateProductionItem({id:item.id,field,value:input.checked}));wrap.append(input,document.createTextNode(label));checks.appendChild(wrap);}
+    const foot=document.createElement("div");foot.className="row";const notes=document.createElement("p");notes.className="hint";notes.textContent=item.notes||"Ingen noter";const remove=document.createElement("button");remove.className="small";remove.textContent="Fjern";remove.disabled=data.currentUserRole!=="admin";remove.onclick=async()=>renderProduction(await window.brightside.removeProductionItem(item.id));foot.append(notes,remove);card.append(head,checks,foot);root.appendChild(card);});
+}
+async function refreshProduction(){renderProduction(await window.brightside.getProductionPlan());}
+
 function renderTeam(data){
   teamState=data;$("#teamConnection").textContent=data.backendReady?"ONLINE · SYNKRONISERET":"LOKAL KØ · SUPABASE MANGLER";
   const devices=$("#deviceList");devices.textContent="";(data.devices||[]).forEach(device=>{const row=document.createElement("div");row.className="deviceRow";const info=document.createElement("div");const strong=document.createElement("strong");strong.textContent=device.name;const sub=document.createElement("span");sub.textContent=`${device.user} · ${device.role==="admin"?"Admin":"Team"} · v${device.version}`;info.append(strong,sub);const live=document.createElement("span");live.className="onlineDot";live.textContent=device.online?"Online":"Offline";row.append(info,live);devices.appendChild(row);});
@@ -61,6 +73,7 @@ async function initialize() {
   await refreshContinuity();
   await refreshAiKnowledge();
   await refreshTeam();
+  await refreshProduction();
 }
 
 document.querySelectorAll("[data-tab]").forEach(btn => btn.addEventListener("click", () => {
@@ -226,6 +239,9 @@ $("#saveAiTextBtn").onclick=async()=>{
 
 $("#onboardingLoginBtn").onclick=()=>window.brightside.navigate("https://higgsfield.ai");
 $("#onboardingDoneBtn").onclick=async()=>{await window.brightside.completeOnboarding($("#onboardingName").value);$("#onboardingDialog").close();await refreshTeam();};
+$("#productionForm").onsubmit=async event=>{event.preventDefault();const payload={title:$("#prodTitle").value.trim(),scene:$("#prodScene").value.trim(),assignedTo:$("#prodOwner").value.trim(),engine:$("#prodEngine").value.trim(),deadline:$("#prodDeadline").value,notes:$("#prodNotes").value.trim(),privateOnly:$("#prodPrivate").checked};renderProduction(await window.brightside.createProductionItem(payload));event.target.reset();};
+$("#importPlanBtn").onclick=async()=>{try{$("#planStatus").textContent="Importerer planen…";const data=await window.brightside.importProductionPlan();renderProduction(data);$("#planStatus").textContent="Planen er importeret og gemt i KESSLER/Produktion.";}catch(error){$("#planStatus").textContent=`Importen fejlede: ${error.message}`;}};
+$("#openPlanFolderBtn").onclick=()=>window.brightside.openProductionFolder();
 $("#teamFab").onclick=()=>$("#teamPanel").classList.toggle("open");$("#teamClose").onclick=()=>$("#teamPanel").classList.remove("open");
 $("#teamComposer").onsubmit=async event=>{event.preventDefault();const input=$("#teamInput"),value=input.value.trim();if(!value)return;input.value="";renderTeam(await window.brightside.sendTeamMessage(value));};
 $("#teamAttach").onclick=async()=>renderTeam(await window.brightside.attachTeamFiles());

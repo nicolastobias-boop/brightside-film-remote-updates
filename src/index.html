@@ -17,7 +17,7 @@
     <button id="settingsBtn" class="iconBtn" aria-label="Indstillinger">⚙</button>
   </header>
   <aside class="sidebar">
-    <nav class="tabs"><button data-tab="chat" class="active">Assistent</button><button data-tab="continuity">Scener</button><button data-tab="workflows">Workflows</button><button data-tab="imageLab">Billedmager</button><button data-tab="identity">Identitet</button></nav>
+    <nav class="tabs"><button data-tab="chat" class="active">Assistent</button><button data-tab="continuity">Scener</button><button data-tab="production">Arbejdsplan</button><button data-tab="workflows">Workflows</button><button data-tab="imageLab">Billedmager</button><button data-tab="identity">Identitet</button></nav>
     <main id="chat" class="panel active">
       <section class="projectCard"><div><span class="eyebrow">AKTIV PROFIL</span><h1>KESSLER</h1><p>Film · prompts · continuity · 25 fps</p></div><span class="status">LÅST KERNE</span></section>
       <section id="messages" class="messages">
@@ -28,6 +28,12 @@
         <textarea id="prompt" rows="3" placeholder="Fx: Lav et tæt kamp-shot af Mikkel, samme karakter og skader…"></textarea>
         <div class="composeActions"><button id="micBtn" type="button" class="round">●</button><span id="voiceStatus"></span><button id="sendBtn" type="submit" class="send">Send</button></div>
       </form>
+    </main>
+    <main id="production" class="panel">
+      <section class="identityHead"><span class="eyebrow">PRODUKTIONSOVERBLIK</span><h2>KESSLER-arbejdsplan</h2><p>Hvem laver hvilke genereringer, hvad er godkendt, og hvornår får Allan materialet.</p></section>
+      <section class="identityBlock"><div class="row"><div id="planSummary" class="planSummary"></div><div class="row"><button id="importPlanBtn" class="small">Importér Excel/CSV</button><button id="openPlanFolderBtn" class="small">Åbn planmappe</button></div></div><p id="planStatus" class="hint">Du kan importere Excel, CSV, TSV eller JSON. Kolonner genkendes automatisk.</p></section>
+      <section class="identityBlock"><h3>Opret element</h3><form id="productionForm" class="productionForm"><label>Generation / element<input id="prodTitle" required placeholder="Fx SC014 · Mikkel går ind i ringen" /></label><label>Scene<input id="prodScene" placeholder="SC014" /></label><label>Ansvarlig<input id="prodOwner" placeholder="Allan, Nicolas…" /></label><label>Workflow / engine<input id="prodEngine" placeholder="Seedance 2.5" /></label><label>Deadline til Allan<input id="prodDeadline" type="datetime-local" /></label><label class="privacyToggle"><input id="prodPrivate" type="checkbox" /><span>Kun hos mig · Admin</span></label><label class="full">Noter<textarea id="prodNotes" rows="2"></textarea></label><button class="send full" type="submit">+ Tilføj til arbejdsplan</button></form></section>
+      <section id="productionBoard" class="productionBoard"></section>
     </main>
     <main id="workflows" class="panel">
       <section class="identityHead"><span class="eyebrow">ENGINE GUIDE</span><h2>Higgsfield workflows</h2><p>Vælg efter den kreative opgave. Assistenten forklarer input, styrker og den bedste rækkefølge.</p></section>
