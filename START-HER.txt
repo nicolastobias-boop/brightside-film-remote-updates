@@ -1,4 +1,4 @@
-BRIGHTSIDE FILM REMOTE 0.3.0 — OPDATERINGSINSTALLER
+BRIGHTSIDE FILM REMOTE 0.7.0 — PERSONLIG NICOLAS/ADMIN
 
 1. Pak ZIP-filen ud på din Mac.
 2. Dobbeltklik på "Installer-Brightside-Film-Remote.command".
@@ -8,8 +8,8 @@ BRIGHTSIDE FILM REMOTE 0.3.0 — OPDATERINGSINSTALLER
 5. Installationen henter appens komponenter og kan tage 5–15 minutter.
 6. Når Finder viser appen: højreklik på "Brightside Film Remote" og vælg Åbn første gang.
 
-Dette er den sidste planlagte manuelle installation. Fra version 0.3.0
-søger appen selv efter nye versioner. Login, indstillinger, Kessler-materiale
+Dette er den sidste planlagte manuelle installation. Appen
+søger selv efter nye versioner. Login, indstillinger, Kessler-materiale
 og referencer bevares ved opdatering.
 
 Appen bliver installeret i din personlige Applications-mappe.

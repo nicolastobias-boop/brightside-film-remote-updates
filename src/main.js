@@ -1,12 +1,12 @@
 const { app, BrowserWindow, WebContentsView, ipcMain, dialog, safeStorage, session, nativeImage, shell } = require("electron");
 const fs = require("fs");
 const path = require("path");
-const os = require("os");
 const { execFileSync } = require("child_process");
 const OpenAI = require("openai");
 const { toFile } = require("openai");
 const pdf = require("pdf-parse");
 const { KESSLER_PROFILE, HIGGSFIELD_WORKFLOWS, buildSystemPrompt } = require("./knowledge");
+const { ENGINE_CATALOG, normalizeBible, readiness, buildBibleText } = require("./production-bible");
 const { setupUpdater, stopUpdater } = require("./updater");
 
 let mainWindow;
@@ -31,10 +31,19 @@ const sceneRefsDir = scene => path.join(sceneDir(scene), "Referencer");
 const sceneWorkDir = scene => path.join(sceneDir(scene), "Work");
 const sceneFinalDir = scene => path.join(sceneDir(scene), "Final");
 const localEditorDeliveryDir = () => path.join(masterDir(), "Godkendt til Allan");
-const teamDir = () => path.join(masterDir(), "Team");
-const teamAttachmentsDir = () => path.join(teamDir(), "Vedhæftninger");
 const productionDir = () => path.join(masterDir(), "Produktion");
 const productionPlanPath = () => path.join(productionDir(), "KESSLER-arbejdsplan.json");
+const productionBibleDir = () => path.join(masterDir(), "Production Bible");
+const productionBibleJsonPath = () => path.join(productionBibleDir(), "KESSLER-production-bible.json");
+const productionBibleTextPath = () => path.join(productionBibleDir(), "KESSLER-production-bible.md");
+const STATE_SCHEMA_VERSION = 2;
+
+function atomicWriteFile(filePath, content) {
+  fs.mkdirSync(path.dirname(filePath), {recursive:true});
+  const tempPath = `${filePath}.tmp-${process.pid}`;
+  fs.writeFileSync(tempPath, content);
+  fs.renameSync(tempPath, filePath);
+}
 
 function safeFilePart(value) {
   return String(value || "reference").replace(/[^a-z0-9æøå_-]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "reference";
@@ -66,7 +75,7 @@ function ensureSceneFolders(scene) {
 }
 
 function ensureMasterFolder() {
-  [masterDir(), assetDir(), importedDir(), promptDir(), elementsDir(), characterDir(), locationDir(), scenesDir(), aiKnowledgeDir(), localEditorDeliveryDir(), teamDir(), teamAttachmentsDir(), productionDir(), path.join(masterDir(), "Character sheets"), path.join(masterDir(), "Location maps")]
+  [masterDir(), assetDir(), importedDir(), promptDir(), elementsDir(), characterDir(), locationDir(), scenesDir(), aiKnowledgeDir(), localEditorDeliveryDir(), productionDir(), productionBibleDir(), path.join(masterDir(), "Character sheets"), path.join(masterDir(), "Location maps")]
     .forEach(directory => fs.mkdirSync(directory, { recursive: true }));
   copyLegacyElements(path.join(masterDir(), "Character sheets"), characterDir());
   copyLegacyElements(path.join(masterDir(), "Location maps"), locationDir());
@@ -100,26 +109,41 @@ function appendPromptLog(userText, assistantText) {
 }
 
 function initialState() {
-  return { project: KESSLER_PROFILE, imports: [], aiKnowledge: [], scenes: [], activeSceneId: null, currentUserRole: "team", currentUserName: "Teammedlem", onboardingCompleted: false, teamMessages: [], productionPlan: [], editorName: "Allan", editorDeliveryDir: "", editorDeliveries: [], privateAssets: {}, model: "gpt-5.6-terra", encryptedApiKey: null, conversation: [], autoUpdate: true, updateFeedUrl: "" };
+  return { schemaVersion:STATE_SCHEMA_VERSION, project:KESSLER_PROFILE, projectMeta:{logline:"",tone:"Rå dansk bokse-realisme"}, styleLocks:{visualStyle:"",cameraLens:"",characterContinuity:"",locationLighting:"",exclusions:""}, shots:[], takeRatings:{}, sceneBindings:[], imports:[], aiKnowledge:[], scenes:[], activeSceneId:null, currentUserRole:"admin", currentUserName:"Nicolas", onboardingCompleted:false, productionPlan:[], editorName:"Allan", editorDeliveryDir:"", editorDeliveries:[], privateAssets:{}, model:"gpt-5.6-terra", encryptedApiKey:null, conversation:[], autoUpdate:true, updateFeedUrl:"" };
 }
 
-function loadState() {
-  try {
-    const state = {...initialState(), ...JSON.parse(fs.readFileSync(statePath(), "utf8"))};
+function normalizeLoadedState(parsed) {
+    const state = {...initialState(), ...parsed};
     if (!Array.isArray(state.imports)) state.imports = [];
     if (!Array.isArray(state.aiKnowledge)) state.aiKnowledge = [];
     if (!Array.isArray(state.scenes)) state.scenes = [];
     if (!Array.isArray(state.editorDeliveries)) state.editorDeliveries = [];
-    if (!Array.isArray(state.teamMessages)) state.teamMessages = [];
     if (!Array.isArray(state.productionPlan)) state.productionPlan = [];
     if (!state.privateAssets || typeof state.privateAssets !== "object") state.privateAssets = {};
+    state.currentUserRole = "admin";
+    state.currentUserName = "Nicolas";
+    state.schemaVersion = STATE_SCHEMA_VERSION;
+    normalizeBible(state);
     return state;
-  } catch { return initialState(); }
+}
+
+function loadState() {
+  try { return normalizeLoadedState(JSON.parse(fs.readFileSync(statePath(), "utf8"))); }
+  catch {
+    try { return normalizeLoadedState(JSON.parse(fs.readFileSync(`${statePath()}.backup`, "utf8"))); }
+    catch { return initialState(); }
+  }
 }
 
 function saveState(next) {
   fs.mkdirSync(path.dirname(statePath()), { recursive: true });
-  fs.writeFileSync(statePath(), JSON.stringify(next, null, 2));
+  next.schemaVersion = STATE_SCHEMA_VERSION;
+  normalizeBible(next);
+  const destination = statePath();
+  if (fs.existsSync(destination)) {
+    try { fs.copyFileSync(destination, `${destination}.backup`); } catch {}
+  }
+  atomicWriteFile(destination, JSON.stringify(next, null, 2));
 }
 
 function imageThumbnail(filePath) {
@@ -152,14 +176,14 @@ function continuitySnapshot() {
   const scene = activeScene(state);
   if (scene) ensureSceneFolders(scene);
   return {
-    scenes: state.scenes.map(item => ({id:item.id, title:item.title, folder:item.folder, privateOnly:Boolean(item.privateOnly), active:item.id === state.activeSceneId})),
+    scenes: state.scenes.map(item => ({id:item.id, title:item.title, folder:item.folder, privateOnly:Boolean(item.privateOnly), anchorFrame:item.anchorFrame||"", active:item.id === state.activeSceneId})),
     activeSceneId: state.activeSceneId,
-    currentUserRole: state.currentUserRole || "admin",
+    currentUserRole: "admin",
     characters: listAssets(characterDir(), "character"),
     locations: listAssets(locationDir(), "location"),
-    references: scene ? listAssets(sceneRefsDir(scene), "reference") : [],
-    work: scene ? listAssets(sceneWorkDir(scene), "work").map(item => ({...item, privateOnly:Boolean(state.privateAssets[`${scene.id}:work:${item.name}`])})) : [],
-    final: scene ? listAssets(sceneFinalDir(scene), "final").map(item => ({...item, privateOnly:Boolean(state.privateAssets[`${scene.id}:final:${item.name}`])})) : [],
+    references: scene ? listAssets(sceneRefsDir(scene), "reference").map(item=>({...item,binding:state.sceneBindings.find(binding=>binding.sceneId===scene.id&&binding.sceneFile===item.name)||null,isAnchor:scene.anchorFrame===`reference/${item.name}`})) : [],
+    work: scene ? listAssets(sceneWorkDir(scene), "work").map(item => ({...item, privateOnly:Boolean(state.privateAssets[`${scene.id}:work:${item.name}`]),rating:state.takeRatings[`${scene.id}:work:${item.name}`]||"none",isAnchor:scene.anchorFrame===`work/${item.name}`})) : [],
+    final: scene ? listAssets(sceneFinalDir(scene), "final").map(item => ({...item, privateOnly:Boolean(state.privateAssets[`${scene.id}:final:${item.name}`]),rating:state.takeRatings[`${scene.id}:final:${item.name}`]||"none",isAnchor:scene.anchorFrame===`final/${item.name}`})) : [],
     editorName: state.editorName || "Allan",
     editorDeliveryDir: state.editorDeliveryDir || localEditorDeliveryDir(),
     editorDeliveryCustom: Boolean(state.editorDeliveryDir),
@@ -179,17 +203,18 @@ function createScene(payload) {
   state.activeSceneId = scene.id;
   ensureSceneFolders(scene);
   saveState(state);
+  persistProductionBible(state);
   return continuitySnapshot();
 }
 
 async function importContinuityFiles(category) {
   const state = loadState();
   const scene = activeScene(state);
-  const destinations = {character:characterDir(), location:locationDir(), scene:scene && sceneRefsDir(scene)};
+  const destinations = {character:characterDir(), location:locationDir(), scene:scene && sceneRefsDir(scene), background:scene && sceneRefsDir(scene)};
   const destinationDirectory = destinations[category];
   if (!destinationDirectory) throw new Error("Opret eller vælg først en scene.");
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: category === "character" ? "Tilføj karakterer" : category === "location" ? "Tilføj locations" : "Tilføj referencer til scenen",
+    title: category === "character" ? "Tilføj karakterer" : category === "location" ? "Tilføj locations" : category === "background" ? "Tilføj rent baggrundslag" : "Tilføj referencer til scenen",
     properties:["openFile","multiSelections"],
     filters:[{name:"Billeder, PDF og noter", extensions:["pdf","txt","md","jpg","jpeg","png","webp"]}]
   });
@@ -198,7 +223,9 @@ async function importContinuityFiles(category) {
   for (const source of result.filePaths) {
     const destination = uniqueDestination(destinationDirectory, path.basename(source));
     fs.copyFileSync(source, destination);
+    if(scene && ["scene","background"].includes(category)) state.sceneBindings.push({id:`${Date.now()}-${Math.random().toString(36).slice(2,7)}`,sceneId:scene.id,type:category==="background"?"background":"reference",sourceName:path.basename(source),sceneFile:path.basename(destination),locked:category==="background",createdAt:new Date().toISOString()});
   }
+  if(scene && ["scene","background"].includes(category)) { saveState(state); persistProductionBible(state); }
   return continuitySnapshot();
 }
 
@@ -221,7 +248,9 @@ function addElementsToScene(ids) {
     if (!source || !fs.existsSync(source)) continue;
     const destination = uniqueDestination(sceneRefsDir(scene), path.basename(source));
     fs.copyFileSync(source, destination);
+    state.sceneBindings.push({id:`${Date.now()}-${Math.random().toString(36).slice(2,7)}`,sceneId:scene.id,elementId:id,type:String(id).split(":")[0],sourceName:path.basename(source),sceneFile:path.basename(destination),locked:true,createdAt:new Date().toISOString()});
   }
+  saveState(state);persistProductionBible(state);
   return continuitySnapshot();
 }
 
@@ -233,17 +262,23 @@ function moveWorkToFinal(filename) {
   const source = path.join(sceneWorkDir(scene), safeName);
   if (!safeName || !fs.existsSync(source)) throw new Error("Work-filen kunne ikke findes.");
   const destination = uniqueDestination(sceneFinalDir(scene), safeName);
-  fs.renameSync(source, destination);
+  fs.copyFileSync(source, destination);
+  const finalName=path.basename(destination),workKey=`${scene.id}:work:${safeName}`,finalKey=`${scene.id}:final:${finalName}`;
+  if (state.privateAssets[`${scene.id}:work:${safeName}`]) {
+    state.privateAssets[finalKey] = true;
+  }
+  if(state.takeRatings[workKey])state.takeRatings[finalKey]=state.takeRatings[workKey];
+  saveState(state);
   return continuitySnapshot();
 }
 
 function persistProductionPlan(state) {
   fs.mkdirSync(productionDir(),{recursive:true});
-  fs.writeFileSync(productionPlanPath(),JSON.stringify({project:"KESSLER",frameRate:25,aspectRatio:"2.39:1",updatedAt:new Date().toISOString(),items:state.productionPlan},null,2));
+  atomicWriteFile(productionPlanPath(),JSON.stringify({project:"KESSLER",frameRate:25,aspectRatio:"2.39:1",updatedAt:new Date().toISOString(),items:state.productionPlan},null,2));
 }
 function productionSnapshot() {
   const state=loadState(),items=state.productionPlan.slice().sort((a,b)=>String(a.deadline||"9999").localeCompare(String(b.deadline||"9999")));
-  return {items,currentUserRole:state.currentUserRole||"admin",summary:{total:items.length,made:items.filter(x=>x.made).length,approved:items.filter(x=>x.approved).length,delivered:items.filter(x=>x.delivered).length}};
+  return {items,currentUserRole:"admin",summary:{total:items.length,made:items.filter(x=>x.made).length,approved:items.filter(x=>x.approved).length,delivered:items.filter(x=>x.delivered).length}};
 }
 function normalizeHeader(value){return String(value||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"");}
 function parseDelimited(text,delimiter) {
@@ -284,27 +319,92 @@ function updateProductionItem({id,field,value}) {
 function removeProductionItem(id){const state=loadState();assertAdmin(state);state.productionPlan=state.productionPlan.filter(x=>x.id!==id);saveState(state);persistProductionPlan(state);return productionSnapshot();}
 function openProductionFolder(){fs.mkdirSync(productionDir(),{recursive:true});return shell.openPath(productionDir());}
 
-function teamSnapshot() {
+function persistProductionBible(state) {
+  normalizeBible(state);
+  const active = activeScene(state);
+  const payload = {
+    schemaVersion:1,
+    project:"KESSLER",
+    aspectRatio:"2.39:1",
+    frameRate:25,
+    updatedAt:new Date().toISOString(),
+    projectMeta:state.projectMeta,
+    styleLocks:state.styleLocks,
+    scenes:state.scenes,
+    shots:state.shots,
+    sceneBindings:state.sceneBindings,
+    activeSceneId:state.activeSceneId,
+    activeScene:active ? {id:active.id,title:active.title,folder:active.folder,anchorFrame:active.anchorFrame||""} : null
+  };
+  atomicWriteFile(productionBibleJsonPath(), JSON.stringify(payload,null,2));
+  atomicWriteFile(productionBibleTextPath(), buildBibleText(state));
+}
+
+function bibleSnapshot() {
+  const state=loadState(),scene=activeScene(state);
+  return {
+    projectMeta:state.projectMeta,
+    styleLocks:state.styleLocks,
+    engines:ENGINE_CATALOG,
+    readiness:readiness(state),
+    activeScene:scene ? {id:scene.id,title:scene.title,folder:scene.folder,anchorFrame:scene.anchorFrame||""} : null,
+    shots:scene ? state.shots.filter(shot=>shot.sceneId===scene.id).sort((a,b)=>String(a.code).localeCompare(String(b.code),"da",{numeric:true})) : []
+  };
+}
+
+function updateBible(payload={}) {
   const state=loadState();
-  return {online:false,backendReady:false,currentUser:{name:state.currentUserName||"Nicolas",role:state.currentUserRole||"admin"},devices:[{id:state.deviceId||"local",name:os.hostname(),user:state.currentUserName||"Nicolas",role:state.currentUserRole||"admin",version:app.getVersion(),lastSeen:new Date().toISOString(),online:true}],messages:state.teamMessages.slice(-200).map(({attachmentPath:_p,...item})=>item)};
+  for(const key of ["logline","tone"]) if(key in payload) state.projectMeta[key]=String(payload[key]||"").slice(0,4000);
+  for(const key of ["visualStyle","cameraLens","characterContinuity","locationLighting","exclusions"]) if(key in payload) state.styleLocks[key]=String(payload[key]||"").slice(0,8000);
+  saveState(state);persistProductionBible(state);return bibleSnapshot();
 }
-function saveTeamProfile(name) {
-  const state=loadState(); const clean=String(name||"").trim(); if(clean) state.currentUserName=clean; if(!state.deviceId) state.deviceId=`${Date.now()}-${Math.random().toString(36).slice(2,8)}`; saveState(state); return teamSnapshot();
+
+function createShot(payload={}) {
+  const state=loadState(),scene=activeScene(state);if(!scene)throw new Error("Opret eller vælg først en scene.");
+  const title=String(payload.title||"").trim();if(!title)throw new Error("Skriv et navn til shottet.");
+  const count=state.shots.filter(shot=>shot.sceneId===scene.id).length+1;
+  state.shots.push({id:`${Date.now()}-${Math.random().toString(36).slice(2,8)}`,sceneId:scene.id,code:String(payload.code||`SH${String(count).padStart(3,"0")}`).toUpperCase().slice(0,30),title:title.slice(0,200),engine:String(payload.engine||"auto"),status:"planlagt",prompt:String(payload.prompt||"").slice(0,16000),createdAt:new Date().toISOString()});
+  saveState(state);persistProductionBible(state);return bibleSnapshot();
 }
-function sendTeamMessage(text) {
-  const state=loadState(),clean=String(text||"").trim(); if(!clean) return teamSnapshot();
-  state.teamMessages.push({id:`${Date.now()}-${Math.random().toString(36).slice(2,7)}`,author:state.currentUserName||"Nicolas",text:clean,createdAt:new Date().toISOString(),pendingSync:true}); saveState(state); return teamSnapshot();
+
+function updateShot({id,field,value}={}) {
+  const allowed=["code","title","engine","status","prompt"];if(!allowed.includes(field))throw new Error("Ugyldigt shot-felt.");
+  const state=loadState(),shot=state.shots.find(item=>item.id===id);if(!shot)throw new Error("Shottet findes ikke.");
+  shot[field]=String(value||"").slice(0,field==="prompt"?16000:400);shot.updatedAt=new Date().toISOString();
+  saveState(state);persistProductionBible(state);return bibleSnapshot();
 }
-async function attachTeamFiles() {
-  const state=loadState(),result=await dialog.showOpenDialog(mainWindow,{title:"Vedhæft filer til KESSLER-chatten",properties:["openFile","multiSelections"]}); if(result.canceled) return teamSnapshot();
-  fs.mkdirSync(teamAttachmentsDir(),{recursive:true});
-  for(const source of result.filePaths){const destination=uniqueDestination(teamAttachmentsDir(),path.basename(source));fs.copyFileSync(source,destination);state.teamMessages.push({id:`${Date.now()}-${Math.random().toString(36).slice(2,7)}`,author:state.currentUserName||"Nicolas",text:"Vedhæftede en fil",attachment:path.basename(destination),attachmentPath:destination,createdAt:new Date().toISOString(),pendingSync:true});}
-  saveState(state); return teamSnapshot();
+
+function removeShot(id) {
+  const state=loadState();state.shots=state.shots.filter(item=>item.id!==id);saveState(state);persistProductionBible(state);return bibleSnapshot();
 }
-function openTeamAttachments(){fs.mkdirSync(teamAttachmentsDir(),{recursive:true});return shell.openPath(teamAttachmentsDir());}
+
+function setTakeRating({category,filename,rating}={}) {
+  const state=loadState(),scene=activeScene(state);if(!scene)throw new Error("Vælg først en scene.");
+  if(!["work","final"].includes(category)||!["none","red","yellow","green"].includes(rating))throw new Error("Ugyldig take-vurdering.");
+  const safeName=path.basename(String(filename||"")),directory=category==="work"?sceneWorkDir(scene):sceneFinalDir(scene);
+  if(!safeName||!fs.existsSync(path.join(directory,safeName)))throw new Error("Filen kunne ikke findes.");
+  const key=`${scene.id}:${category}:${safeName}`;if(rating==="none")delete state.takeRatings[key];else state.takeRatings[key]=rating;
+  saveState(state);return continuitySnapshot();
+}
+
+function setSceneAnchor({category,filename}={}) {
+  const state=loadState(),scene=activeScene(state);if(!scene)throw new Error("Vælg først en scene.");
+  if(!["reference","work","final"].includes(category))throw new Error("Ugyldig anchor-kilde.");
+  const safeName=path.basename(String(filename||""));
+  const directory=category==="reference"?sceneRefsDir(scene):category==="work"?sceneWorkDir(scene):sceneFinalDir(scene);
+  if(!safeName||!fs.existsSync(path.join(directory,safeName)))throw new Error("Anchor-filen kunne ikke findes.");
+  scene.anchorFrame=`${category}/${safeName}`;saveState(state);persistProductionBible(state);return continuitySnapshot();
+}
+
+function openProductionBibleFolder(){fs.mkdirSync(productionBibleDir(),{recursive:true});return shell.openPath(productionBibleDir());}
+function openExternalEngine(id) {
+  const engine=ENGINE_CATALOG.find(item=>item.id===id&&item.status==="external"&&item.url);
+  if(!engine)throw new Error("Denne engine åbnes direkte i Brightside eller Higgsfield.");
+  return shell.openExternal(engine.url);
+}
 
 function assertAdmin(state) {
-  if ((state.currentUserRole || "admin") !== "admin") throw new Error("Kun en Brightside Admin kan ændre privatstatus.");
+  if (state.currentUserRole !== "admin") throw new Error("Kun Nicolas/Admin kan ændre privatstatus.");
 }
 function setScenePrivate(privateOnly) {
   const state=loadState(); assertAdmin(state); const scene=activeScene(state); if(!scene) throw new Error("Vælg først en scene.");
@@ -331,10 +431,12 @@ function deliverFinalToEditor(filename) {
   const safeName=path.basename(String(filename||"")); if(scene.privateOnly||state.privateAssets[`${scene.id}:final:${safeName}`]) throw new Error("Filen er markeret Kun hos mig. Fjern fluebenet før aflevering til Allan.");
   const source=path.join(sceneFinalDir(scene),safeName); if(!safeName||!fs.existsSync(source)) throw new Error("Final-filen kunne ikke findes.");
   const root=state.editorDeliveryDir||localEditorDeliveryDir(),destinationDir=path.join(root,scene.folder); fs.mkdirSync(destinationDir,{recursive:true});
-  const version=state.editorDeliveries.filter(item=>item.sceneId===scene.id&&item.sourceName===safeName).length+1,masterName=editorMasterName(scene,safeName,version),destination=path.join(destinationDir,masterName);
+  let version=state.editorDeliveries.filter(item=>item.sceneId===scene.id&&item.sourceName===safeName).reduce((max,item)=>Math.max(max,Number(item.version)||0),0)+1;
+  let masterName=editorMasterName(scene,safeName,version),destination=path.join(destinationDir,masterName);
+  while(fs.existsSync(destination)){version+=1;masterName=editorMasterName(scene,safeName,version);destination=path.join(destinationDir,masterName);}
   fs.copyFileSync(source,destination); state.editorDeliveries.push({id:`${Date.now()}-${Math.random().toString(36).slice(2,7)}`,sceneId:scene.id,sceneTitle:scene.title,sceneFolder:scene.folder,sourceName:safeName,masterName,version,approvedFor:state.editorName||"Allan",approvedAt:new Date().toISOString(),destination}); saveState(state);
   const deliveries=state.editorDeliveries.filter(item=>item.sceneId===scene.id).map(({destination:_p,...item})=>item);
-  fs.writeFileSync(path.join(destinationDir,"BRIGHTSIDE-delivery-manifest.json"),JSON.stringify({project:"KESSLER",frameRate:25,aspectRatio:"2.39:1",scene:{id:scene.id,title:scene.title,folder:scene.folder},deliveries},null,2));
+  atomicWriteFile(path.join(destinationDir,"BRIGHTSIDE-delivery-manifest.json"),JSON.stringify({project:"KESSLER",frameRate:25,aspectRatio:"2.39:1",scene:{id:scene.id,title:scene.title,folder:scene.folder},deliveries},null,2));
   return continuitySnapshot();
 }
 function openEditorDeliveryFolder() {
@@ -590,11 +692,14 @@ async function runAssistant(userText, selectedEngine = "auto") {
   const client = new OpenAI({apiKey});
   const scene = activeScene(state);
   const sceneReferences = scene ? listAssets(sceneRefsDir(scene), "reference").map(item => item.name).join(", ") : "";
+  const sceneBindings = scene ? state.sceneBindings.filter(item=>item.sceneId===scene.id).map(item=>`${item.type}: ${item.sceneFile}${item.locked?" (låst)":""}`).join(", ") : "";
   const externalKnowledge = state.aiKnowledge.map(item => `[${item.source.toUpperCase()} · ${item.name}]\n${item.summary || ""}`).join("\n\n").slice(-80000);
   const imported = [
+    `PRODUCTION BIBLE:\n${buildBibleText(state)}`,
+    `ENGINE-KONTRAKTER:\n${JSON.stringify(ENGINE_CATALOG)}`,
+    scene ? `AKTIV SCENE: ${scene.title}. Kontinuitetsreferencer: ${sceneReferences || "ingen valgt endnu"}. Låste scene-elementer: ${sceneBindings || "ingen"}` : "INGEN AKTIV SCENE",
     state.imports.map(x => `${x.name}: ${x.summary || "visuel reference"}`).join("\n"),
-    externalKnowledge ? `IMPORTERET AI-VIDEN FRA CLAUDE/HIGGSFIELD/ANDRE:\n${externalKnowledge}` : "INGEN IMPORTERET AI-VIDEN",
-    scene ? `AKTIV SCENE: ${scene.title}. Kontinuitetsreferencer: ${sceneReferences || "ingen valgt endnu"}` : "INGEN AKTIV SCENE"
+    externalKnowledge ? `IMPORTERET AI-VIDEN FRA CLAUDE/HIGGSFIELD/ANDRE:\n${externalKnowledge}` : "INGEN IMPORTERET AI-VIDEN"
   ].join("\n").slice(0, 50000);
   const screenshot = await screenshotDataUrl();
   const references = importedReferenceImages(state.imports);
@@ -739,11 +844,15 @@ app.whenReady().then(() => {
   ipcMain.handle("production:update", (_e, payload) => updateProductionItem(payload));
   ipcMain.handle("production:remove", (_e, id) => removeProductionItem(id));
   ipcMain.handle("production:open-folder", () => openProductionFolder());
-  ipcMain.handle("team:get", () => teamSnapshot());
-  ipcMain.handle("team:profile", (_e, name) => saveTeamProfile(name));
-  ipcMain.handle("team:send", (_e, text) => sendTeamMessage(text));
-  ipcMain.handle("team:attach", () => attachTeamFiles());
-  ipcMain.handle("team:open-attachments", () => openTeamAttachments());
+  ipcMain.handle("bible:get", () => bibleSnapshot());
+  ipcMain.handle("bible:update", (_e, payload) => updateBible(payload));
+  ipcMain.handle("bible:open-folder", () => openProductionBibleFolder());
+  ipcMain.handle("shot:create", (_e, payload) => createShot(payload));
+  ipcMain.handle("shot:update", (_e, payload) => updateShot(payload));
+  ipcMain.handle("shot:remove", (_e, id) => removeShot(id));
+  ipcMain.handle("take:rate", (_e, payload) => setTakeRating(payload));
+  ipcMain.handle("scene:set-anchor", (_e, payload) => setSceneAnchor(payload));
+  ipcMain.handle("engine:open", (_e, id) => openExternalEngine(id));
   ipcMain.handle("assistant:run", (_e, text, engine) => runAssistant(text, engine));
   ipcMain.handle("project:import", () => importFiles());
   ipcMain.handle("project:remove", (_e, id) => { const s=loadState(); const item=s.imports.find(x=>x.id===id); if(item) fs.unlink(item.path,()=>{}); s.imports=s.imports.filter(x=>x.id!==id); saveState(s); return s.imports.map(({path:_p,...x})=>x); });

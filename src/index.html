@@ -17,17 +17,24 @@
     <button id="settingsBtn" class="iconBtn" aria-label="Indstillinger">⚙</button>
   </header>
   <aside class="sidebar">
-    <nav class="tabs"><button data-tab="chat" class="active">Assistent</button><button data-tab="continuity">Scener</button><button data-tab="production">Arbejdsplan</button><button data-tab="workflows">Workflows</button><button data-tab="imageLab">Billedmager</button><button data-tab="identity">Identitet</button></nav>
+    <nav class="tabs"><button data-tab="chat" class="active">Assistent</button><button data-tab="bible">Project Bible</button><button data-tab="continuity">Scener</button><button data-tab="production">Arbejdsplan</button><button data-tab="workflows">Engine Center</button><button data-tab="imageLab">Billedmager</button><button data-tab="identity">Identitet</button></nav>
     <main id="chat" class="panel active">
       <section class="projectCard"><div><span class="eyebrow">AKTIV PROFIL</span><h1>KESSLER</h1><p>Film · prompts · continuity · 25 fps</p></div><span class="status">LÅST KERNE</span></section>
       <section id="messages" class="messages">
         <article class="message assistant"><div class="avatar">B</div><div><p>Jeg kender Kesslers visuelle verden og karakterkontinuitet. Fortæl mig, hvilket shot vi skal skabe eller ændre i Higgsfield.</p><div class="chips"><button>Lav en filmisk prompt</button><button>Analysér det åbne shot</button><button>Lav 3 kontrollerede variationer</button></div></div></article>
       </section>
       <form id="composer" class="composer">
-        <label class="engineSelect">Workflow<select id="engineMode"><option value="auto">Auto · vælg den bedste og forklar hvorfor</option><option value="supercomputer">Supercomputer · flertrins/batch</option><option value="seedance25">Seedance 2.5 · kompleks handling/performance</option><option value="seedance20">Seedance 2.0 · native 4K/detalje</option><option value="genjutsu">Genjutsu · motion transfer/object swap</option><option value="cinema">Cinema Studio 4.0 · filmkontrol</option></select></label>
+        <label class="engineSelect">Workflow<select id="engineMode"><option value="auto">Auto · vælg den bedste og forklar hvorfor</option><option value="supercomputer">Supercomputer · flertrins/batch</option><option value="seedance25">Seedance 2.5 · kompleks handling/performance</option><option value="seedance20">Seedance 2.0 · native 4K/detalje</option><option value="genjutsu">Genjutsu · motion transfer/object swap</option><option value="background-swap">Baggrundslag · lås forgrund, skift miljø</option><option value="cinema">Cinema Studio 4.0 · filmkontrol</option><option value="veo31">Veo 3.1 · ekstern prompt</option><option value="kling">Kling · ekstern prompt</option><option value="runway">Runway · ekstern prompt/upscale</option></select></label>
         <textarea id="prompt" rows="3" placeholder="Fx: Lav et tæt kamp-shot af Mikkel, samme karakter og skader…"></textarea>
         <div class="composeActions"><button id="micBtn" type="button" class="round">●</button><span id="voiceStatus"></span><button id="sendBtn" type="submit" class="send">Send</button></div>
       </form>
+    </main>
+    <main id="bible" class="panel">
+      <section class="identityHead"><span class="eyebrow">PERSONLIG PRODUKTIONSKERNE</span><h2>KESSLER Project Bible</h2><p>Ét lokalt sandhedspunkt for karakterer, locations, kontinuitet, shots og engines. CinemaScope 2.39:1 og 25 fps er permanent låst.</p></section>
+      <section class="identityBlock"><div class="row"><div><h3>Scene-readiness</h3><p id="bibleReadiness" class="hint">Indlæser kontrolpunkter…</p></div><button id="openBibleFolderBtn" class="small">Åbn Bible-mappe</button></div><div id="bibleChecks" class="readinessGrid"></div></section>
+      <form id="bibleForm" class="identityBlock bibleForm"><h3>Projekt og låste regler</h3><label class="full">Logline<textarea id="bibleLogline" rows="2"></textarea></label><label class="full">Tone<textarea id="bibleTone" rows="2"></textarea></label><label class="full">Visuel stil<textarea id="lockVisualStyle" rows="3" placeholder="Farver, tekstur, periode, finish…"></textarea></label><label>Kamera og linse<textarea id="lockCameraLens" rows="4" placeholder="Kamerahøjde, optik, bevægelse…"></textarea></label><label>Karakterkontinuitet<textarea id="lockCharacters" rows="4" placeholder="Ansigt, krop, hår, kostume, skader, alder…"></textarea></label><label>Location og lys<textarea id="lockLocation" rows="4" placeholder="Geografi, production design, lysretning og døgn…"></textarea></label><label>Negative låse<textarea id="lockExclusions" rows="4" placeholder="Må ikke ændres eller opstå…"></textarea></label><button class="send full" type="submit">Gem og lås Production Bible</button><p id="bibleStatus" class="hint full"></p></form>
+      <section class="identityBlock"><div class="row"><div><h3>Shot planner</h3><p id="activeBibleScene" class="hint">Vælg en scene under Scener.</p></div></div><form id="shotForm" class="shotForm"><input id="shotCode" placeholder="SH001" /><input id="shotTitle" required placeholder="Shotnavn" /><select id="shotEngine"></select><textarea id="shotPrompt" class="full" rows="3" placeholder="Færdig shotprompt eller intention…"></textarea><button class="send full" type="submit">+ Tilføj shot</button></form><div id="shotList" class="shotList"></div></section>
+      <section class="identityBlock"><h3>Engine Center</h3><p class="hint">Brightside anbefaler engine ud fra scene, låse og input. Eksterne engines åbnes i deres officielle værktøj; de er ikke skjult integreret.</p><div id="engineCenter" class="engineCenter"></div></section>
     </main>
     <main id="production" class="panel">
       <section class="identityHead"><span class="eyebrow">PRODUKTIONSOVERBLIK</span><h2>KESSLER-arbejdsplan</h2><p>Hvem laver hvilke genereringer, hvad er godkendt, og hvornår får Allan materialet.</p></section>
@@ -55,7 +62,7 @@
       <section class="identityBlock">
         <form id="newSceneForm" class="sceneCreate"><input id="newSceneName" placeholder="Fx: Scene 14 · Omklædningsrummet" required /><label class="privacyToggle"><input id="newScenePrivate" type="checkbox" /><span>Kun hos mig</span></label><button class="send" type="submit">+ Ny scene</button></form>
         <label class="scenePicker">Aktiv scene<select id="sceneSelect"><option value="">Ingen scene endnu</option></select></label>
-        <div class="row"><p id="activeScenePath" class="hint">Opret en scene for at begynde.</p><button id="openSceneFolderBtn" class="small">Åbn scenemappe</button></div><div class="adminPrivacy"><span class="status">ADMIN</span><label class="privacyToggle"><input id="scenePrivate" type="checkbox" disabled /><span>Kun hos mig</span></label><span id="privacyStatus" class="hint">Delt scene · klar til teamsynk</span></div>
+        <div class="row"><p id="activeScenePath" class="hint">Opret en scene for at begynde.</p><button id="openSceneFolderBtn" class="small">Åbn scenemappe</button></div><div class="adminPrivacy"><span class="status">NICOLAS · ADMIN</span><label class="privacyToggle"><input id="scenePrivate" type="checkbox" disabled /><span>Kun hos mig</span></label><span id="privacyStatus" class="hint">Lokal Nicolas-scene</span></div>
       </section>
       <section class="identityBlock">
         <div class="row"><div><h3>Karakterer</h3><p class="hint">Faste ansigter, kostumer, skader og alder.</p></div><button id="importCharactersBtn" class="small">+ Upload</button></div>
@@ -67,7 +74,7 @@
         <button id="addElementsBtn" class="wideAction">Tilføj valgte elementer til aktiv scene</button>
       </section>
       <section class="identityBlock">
-        <div class="row"><div><h3>Scenens referencer</h3><p class="hint">Upload nyt eller genbrug valgte karakterer og locations.</p></div><button id="importSceneRefsBtn" class="small">+ Upload til scene</button></div>
+        <div class="row"><div><h3>Scenens låste referencepakke</h3><p class="hint">Karakterer, locations og baggrundslag bindes til den virkelige scene.</p></div><div class="row"><button id="importBackgroundBtn" class="small">+ Baggrundslag</button><button id="importSceneRefsBtn" class="small">+ Reference</button></div></div>
         <div id="sceneReferences" class="assetGrid compact"></div>
       </section>
       <section class="identityBlock">
@@ -102,11 +109,9 @@
       <section class="identityBlock"><div class="row"><h3>Lookbooks og referencer</h3><button id="importBtn" class="small">+ Tilføj</button></div><div id="imports" class="imports"></div></section>
     </main>
   </aside>
-  <button id="teamFab" class="teamFab" aria-label="Åbn KESSLER teamchat"><span>●</span> Team</button>
-  <aside id="teamPanel" class="teamPanel"><header><div><span class="eyebrow">KESSLER TEAM</span><h3>Brightside chat</h3></div><button id="teamClose" class="iconBtn">×</button></header><div id="teamConnection" class="teamConnection">LOKAL KØ</div><details class="deviceDetails" open><summary>Installerede enheder · Admin</summary><div id="deviceList"></div></details><div id="teamMessages" class="teamMessages"></div><form id="teamComposer" class="teamComposer"><button id="teamAttach" type="button" title="Vedhæft filer">＋</button><input id="teamInput" placeholder="Skriv til KESSLER-teamet…" /><button class="send" type="submit">Send</button></form></aside>
   <dialog id="onboardingDialog" class="onboardingDialog">
     <div class="welcomeMark">B</div><span class="eyebrow">EN HILSEN FRA NICOLAS</span><h2>Velkommen til Brightside Film Remote</h2>
-    <p>Bygget til KESSLER-teamet. Vi arbejder i samme filmiske univers, 2.39:1 og 25 fps.</p><label>Dit navn på denne Mac<input id="onboardingName" placeholder="Skriv dit navn" /></label>
+    <p>Din personlige KESSLER-arbejdsstation. Project Bible, mapper og kontinuitet bliver lokalt på denne Mac i 2.39:1 og 25 fps.</p><input id="onboardingName" type="hidden" value="Nicolas" />
     <ol class="setupSteps"><li>Flyt Brightside Film Remote til Programmer.</li><li>Højreklik på appen og vælg Åbn første gang.</li><li>Log ind i Higgsfield én gang på denne Mac. Login huskes lokalt.</li></ol>
     <div class="terminalHelp"><strong>Kun hvis macOS stadig blokerer</strong><p>Åbn Terminal, indsæt kommandoen og tryk Retur.</p><code>xattr -dr com.apple.quarantine "/Applications/Brightside Film Remote.app"</code><button id="copyTerminalBtn" class="small">Kopiér Terminal-kommando</button></div>
     <p class="hint">Dit Higgsfield-password deles aldrig i installationsfilen.</p>

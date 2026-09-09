@@ -4,7 +4,7 @@ let mediaRecorder;
 let chunks = [];
 let appState;
 let continuityState;
-let teamState;
+let bibleState;
 
 function addMessage(role, text) {
   const article = document.createElement("article");
@@ -56,12 +56,17 @@ function renderProduction(data){
 }
 async function refreshProduction(){renderProduction(await window.brightside.getProductionPlan());}
 
-function renderTeam(data){
-  teamState=data;$("#teamConnection").textContent=data.backendReady?"ONLINE · SYNKRONISERET":"LOKAL KØ · SUPABASE MANGLER";
-  const devices=$("#deviceList");devices.textContent="";(data.devices||[]).forEach(device=>{const row=document.createElement("div");row.className="deviceRow";const info=document.createElement("div");const strong=document.createElement("strong");strong.textContent=device.name;const sub=document.createElement("span");sub.textContent=`${device.user} · ${device.role==="admin"?"Admin":"Team"} · v${device.version}`;info.append(strong,sub);const live=document.createElement("span");live.className="onlineDot";live.textContent=device.online?"Online":"Offline";row.append(info,live);devices.appendChild(row);});
-  const messages=$("#teamMessages");messages.textContent="";(data.messages||[]).forEach(item=>{const article=document.createElement("article");article.className="teamMessage";const meta=document.createElement("div");meta.textContent=`${item.author} · ${new Date(item.createdAt).toLocaleString("da-DK")}`;const body=document.createElement("p");body.textContent=item.text;article.append(meta,body);if(item.attachment){const file=document.createElement("button");file.className="small";file.textContent=`📎 ${item.attachment}`;file.onclick=()=>window.brightside.openTeamAttachments();article.appendChild(file);}if(item.pendingSync){const pending=document.createElement("span");pending.className="pending";pending.textContent="Venter på teamsynk";article.appendChild(pending);}messages.appendChild(article);});messages.scrollTop=messages.scrollHeight;
+function renderBible(data){
+  bibleState=data;
+  $("#bibleReadiness").textContent=`${data.readiness.ready}/${data.readiness.total} kontrolpunkter klar`;
+  const checks=$("#bibleChecks");checks.textContent="";data.readiness.checks.forEach(item=>{const row=document.createElement("div");row.className=`readinessItem ${item.ready?"ready":"missing"}`;row.textContent=`${item.ready?"✓":"○"} ${item.label}`;checks.appendChild(row);});
+  $("#bibleLogline").value=data.projectMeta.logline||"";$("#bibleTone").value=data.projectMeta.tone||"";$("#lockVisualStyle").value=data.styleLocks.visualStyle||"";$("#lockCameraLens").value=data.styleLocks.cameraLens||"";$("#lockCharacters").value=data.styleLocks.characterContinuity||"";$("#lockLocation").value=data.styleLocks.locationLighting||"";$("#lockExclusions").value=data.styleLocks.exclusions||"";
+  $("#activeBibleScene").textContent=data.activeScene?`${data.activeScene.title}${data.activeScene.anchorFrame?` · Anchor: ${data.activeScene.anchorFrame}`:" · mangler anchor frame"}`:"Vælg en scene under Scener.";
+  const engineSelect=$("#shotEngine");engineSelect.textContent="";data.engines.forEach(engine=>{const option=document.createElement("option");option.value=engine.id;option.textContent=`${engine.name} · ${engine.provider}`;engineSelect.appendChild(option);});
+  const list=$("#shotList");list.textContent="";if(!data.shots.length){const empty=document.createElement("p");empty.className="hint";empty.textContent="Ingen shots i den aktive scene endnu.";list.appendChild(empty);}data.shots.forEach(shot=>{const card=document.createElement("article");card.className="shotCard";const title=document.createElement("strong");title.textContent=`${shot.code} · ${shot.title}`;const meta=document.createElement("span");meta.textContent=data.engines.find(engine=>engine.id===shot.engine)?.name||shot.engine;const status=document.createElement("select");[["planlagt","Planlagt"],["arbejder","Arbejder"],["til-godkendelse","Til godkendelse"],["godkendt","Godkendt"]].forEach(([value,label])=>{const option=document.createElement("option");option.value=value;option.textContent=label;option.selected=shot.status===value;status.appendChild(option);});status.onchange=async()=>renderBible(await window.brightside.updateShot({id:shot.id,field:"status",value:status.value}));const prompt=document.createElement("p");prompt.textContent=shot.prompt||"Ingen prompt endnu";const remove=document.createElement("button");remove.className="small";remove.textContent="Fjern";remove.onclick=async()=>renderBible(await window.brightside.removeShot(shot.id));card.append(title,meta,status,prompt,remove);list.appendChild(card);});
+  const engines=$("#engineCenter");engines.textContent="";data.engines.forEach(engine=>{const card=document.createElement("article");card.className="engineMini";const top=document.createElement("div");const name=document.createElement("strong");name.textContent=engine.name;const tag=document.createElement("span");tag.textContent=engine.status==="ready"?"KLAR":"EKSTERN";top.append(name,tag);const best=document.createElement("p");best.textContent=engine.bestFor;const input=document.createElement("small");input.textContent=`Input: ${engine.inputs}`;card.append(top,best,input);if(engine.status==="external"){const open=document.createElement("button");open.className="small";open.textContent="Åbn officielt værktøj";open.onclick=()=>window.brightside.openExternalEngine(engine.id);card.appendChild(open);}engines.appendChild(card);});
 }
-async function refreshTeam(){renderTeam(await window.brightside.getTeam());}
+async function refreshBible(){renderBible(await window.brightside.getProductionBible());}
 
 async function initialize() {
   appState = await window.brightside.getState();
@@ -72,8 +77,8 @@ async function initialize() {
   renderWorkflows(appState.workflows || []);
   await refreshContinuity();
   await refreshAiKnowledge();
-  await refreshTeam();
   await refreshProduction();
+  await refreshBible();
 }
 
 document.querySelectorAll("[data-tab]").forEach(btn => btn.addEventListener("click", () => {
@@ -137,6 +142,8 @@ function assetCard(asset, selectable=false) {
   const footer=document.createElement("div");footer.className="assetFooter";
   if(selectable){const check=document.createElement("input");check.type="checkbox";check.name="continuityAsset";check.value=asset.id;footer.appendChild(check);}
   const name=document.createElement("span");name.textContent=asset.name;name.title=asset.name;footer.appendChild(name);card.appendChild(footer);
+  if(asset.binding){const tag=document.createElement("span");tag.className=`bindingTag ${asset.binding.type}`;tag.textContent=asset.binding.type==="character"?"LÅST KARAKTER":asset.binding.type==="location"?"LÅST LOCATION":asset.binding.type==="background"?"BAGGRUNDSLAG":"REFERENCE";card.appendChild(tag);}
+  if(asset.category==="reference"){const anchor=document.createElement("button");anchor.className="assetAnchor";anchor.textContent=asset.isAnchor?"★ Anchor":"☆ Sæt anchor";anchor.onclick=async()=>{renderContinuity(await window.brightside.setSceneAnchor({category:"reference",filename:asset.name}));await refreshBible();};card.appendChild(anchor);}
   return card;
 }
 
@@ -153,8 +160,9 @@ function renderFileStack(selector, files, mode="plain") {
     const row=document.createElement("div");row.className="sceneFile";
     if(file.thumbnail){const img=document.createElement("img");img.src=file.thumbnail;img.alt=file.name;row.appendChild(img);}
     const name=document.createElement("span");name.textContent=file.name;name.title=file.name;row.appendChild(name);
-    if(mode==="work"){const button=document.createElement("button");button.className="small";button.textContent="Flyt til Final";button.onclick=async()=>renderContinuity(await window.brightside.moveWorkToFinal(file.name));row.appendChild(button);}
+    if(mode==="work"){const button=document.createElement("button");button.className="small";button.textContent="Kopiér til Final";button.onclick=async()=>renderContinuity(await window.brightside.moveWorkToFinal(file.name));row.appendChild(button);}
     if(mode==="final"){const button=document.createElement("button");button.className="small allanButton";button.textContent="Godkend til Allan";button.onclick=async()=>{button.disabled=true;try{renderContinuity(await window.brightside.deliverFinalToEditor(file.name));}catch(error){$("#allanStatus").textContent=error.message;}finally{button.disabled=false;}};row.appendChild(button);}
+    if(mode==="work"||mode==="final"){const rating=document.createElement("select");rating.className=`takeRating ${file.rating}`;[["none","Uden rating"],["red","Rød"],["yellow","Gul"],["green","Grøn"]].forEach(([value,label])=>{const option=document.createElement("option");option.value=value;option.textContent=label;option.selected=file.rating===value;rating.appendChild(option);});rating.onchange=async()=>renderContinuity(await window.brightside.rateTake({category:mode,filename:file.name,rating:rating.value}));const anchor=document.createElement("button");anchor.className="small";anchor.textContent=file.isAnchor?"★ Anchor":"☆ Anchor";anchor.onclick=async()=>{renderContinuity(await window.brightside.setSceneAnchor({category:mode,filename:file.name}));await refreshBible();};row.append(rating,anchor);}
     if(mode==="work"||mode==="final"){const privacy=document.createElement("label");privacy.className="filePrivacy";const check=document.createElement("input");check.type="checkbox";check.checked=Boolean(file.privateOnly);check.disabled=continuityState?.currentUserRole!=="admin";check.onchange=async()=>renderContinuity(await window.brightside.setAssetPrivate({category:mode,filename:file.name,privateOnly:check.checked}));const label=document.createElement("span");label.textContent="Kun hos mig";privacy.append(check,label);row.appendChild(privacy);}
     root.appendChild(row);
   });
@@ -175,7 +183,7 @@ function renderContinuity(data) {
   renderAssetGrid("#sceneReferences",data.references||[],false);
   renderFileStack("#sceneWork",data.work||[],"work");
   renderFileStack("#sceneFinal",data.final||[],"final");
-  const isAdmin=data.currentUserRole==="admin";$("#scenePrivate").disabled=!active||!isAdmin;$("#scenePrivate").checked=Boolean(active?.privateOnly);$("#privacyStatus").textContent=active?.privateOnly?"Privat scene · bliver kun på denne Mac":"Delt scene · klar til teamsynk";
+  const isAdmin=data.currentUserRole==="admin";$("#scenePrivate").disabled=!active||!isAdmin;$("#scenePrivate").checked=Boolean(active?.privateOnly);$("#privacyStatus").textContent=active?.privateOnly?"Kun hos Nicolas · markeres privat":"Lokal Nicolas-scene";
   $("#allanFolder").textContent=data.editorDeliveryCustom?data.editorDeliveryDir:"Lokal standardmappe · vælg en delt mappe på Allans Mac";$("#allanStatus").textContent=(data.editorDeliveries||[]).length?`${data.editorDeliveries.length} masterlevering(er) · 25 fps · CinemaScope`:"Ingen mastere afleveret fra denne scene endnu.";
   const deliveryRoot=$("#allanDeliveries");deliveryRoot.textContent="";(data.editorDeliveries||[]).slice().reverse().forEach(item=>{const row=document.createElement("div");row.className="deliveryRow";const name=document.createElement("strong");name.textContent=item.masterName;const time=document.createElement("span");time.textContent=new Date(item.approvedAt).toLocaleString("da-DK");row.append(name,time);deliveryRoot.appendChild(row);});
 }
@@ -185,12 +193,13 @@ async function refreshContinuity(){renderContinuity(await window.brightside.getC
 $("#newSceneForm").addEventListener("submit",async event=>{
   event.preventDefault();
   const input=$("#newSceneName"); const title=input.value.trim(); if(!title)return;
-  renderContinuity(await window.brightside.createScene({title,privateOnly:$("#newScenePrivate").checked})); input.value="";$("#newScenePrivate").checked=false;
+  renderContinuity(await window.brightside.createScene({title,privateOnly:$("#newScenePrivate").checked}));await refreshBible();input.value="";$("#newScenePrivate").checked=false;
 });
-$("#sceneSelect").onchange=async event=>{if(event.target.value)renderContinuity(await window.brightside.activateScene(event.target.value));};
+$("#sceneSelect").onchange=async event=>{if(event.target.value){renderContinuity(await window.brightside.activateScene(event.target.value));await refreshBible();}};
 $("#importCharactersBtn").onclick=async()=>renderContinuity(await window.brightside.importContinuity("character"));
 $("#importLocationsBtn").onclick=async()=>renderContinuity(await window.brightside.importContinuity("location"));
 $("#importSceneRefsBtn").onclick=async()=>renderContinuity(await window.brightside.importContinuity("scene"));
+$("#importBackgroundBtn").onclick=async()=>{renderContinuity(await window.brightside.importContinuity("background"));await refreshBible();};
 $("#addElementsBtn").onclick=async()=>{
   const ids=[...document.querySelectorAll('input[name="continuityAsset"]:checked')].map(input=>input.value);
   if(!ids.length){$("#activeScenePath").textContent="Vælg mindst én karakter eller location.";return;}
@@ -202,6 +211,10 @@ $("#chooseAllanFolderBtn").onclick=async()=>renderContinuity(await window.bright
 $("#openAllanFolderBtn").onclick=()=>window.brightside.openEditorDeliveryFolder();
 $("#topUpdateBtn").onclick=()=>window.brightside.checkForUpdates();
 window.brightside.onContinuityChanged(data=>renderContinuity(data));
+
+$("#bibleForm").onsubmit=async event=>{event.preventDefault();$("#bibleStatus").textContent="Gemmer låse og opdaterer lokale Bible-filer…";try{renderBible(await window.brightside.updateProductionBible({logline:$("#bibleLogline").value,tone:$("#bibleTone").value,visualStyle:$("#lockVisualStyle").value,cameraLens:$("#lockCameraLens").value,characterContinuity:$("#lockCharacters").value,locationLighting:$("#lockLocation").value,exclusions:$("#lockExclusions").value}));$("#bibleStatus").textContent="Production Bible er gemt lokalt.";}catch(error){$("#bibleStatus").textContent=error.message;}};
+$("#shotForm").onsubmit=async event=>{event.preventDefault();try{renderBible(await window.brightside.createShot({code:$("#shotCode").value,title:$("#shotTitle").value,engine:$("#shotEngine").value,prompt:$("#shotPrompt").value}));event.target.reset();}catch(error){$("#bibleStatus").textContent=error.message;}};
+$("#openBibleFolderBtn").onclick=()=>window.brightside.openProductionBibleFolder();
 
 function sourceLabel(value){return value==="claude"?"Claude":value==="higgsfield"?"Higgsfield":"Anden AI";}
 
@@ -238,13 +251,10 @@ $("#saveAiTextBtn").onclick=async()=>{
 };
 
 $("#onboardingLoginBtn").onclick=()=>window.brightside.navigate("https://higgsfield.ai");
-$("#onboardingDoneBtn").onclick=async()=>{await window.brightside.completeOnboarding($("#onboardingName").value);$("#onboardingDialog").close();await refreshTeam();};
+$("#onboardingDoneBtn").onclick=async()=>{await window.brightside.completeOnboarding("Nicolas");$("#onboardingDialog").close();};
 $("#productionForm").onsubmit=async event=>{event.preventDefault();const payload={title:$("#prodTitle").value.trim(),scene:$("#prodScene").value.trim(),assignedTo:$("#prodOwner").value.trim(),engine:$("#prodEngine").value.trim(),deadline:$("#prodDeadline").value,notes:$("#prodNotes").value.trim(),privateOnly:$("#prodPrivate").checked};renderProduction(await window.brightside.createProductionItem(payload));event.target.reset();};
 $("#importPlanBtn").onclick=async()=>{try{$("#planStatus").textContent="Importerer planen…";const data=await window.brightside.importProductionPlan();renderProduction(data);$("#planStatus").textContent="Planen er importeret og gemt i KESSLER/Produktion.";}catch(error){$("#planStatus").textContent=`Importen fejlede: ${error.message}`;}};
 $("#openPlanFolderBtn").onclick=()=>window.brightside.openProductionFolder();
-$("#teamFab").onclick=()=>$("#teamPanel").classList.toggle("open");$("#teamClose").onclick=()=>$("#teamPanel").classList.remove("open");
-$("#teamComposer").onsubmit=async event=>{event.preventDefault();const input=$("#teamInput"),value=input.value.trim();if(!value)return;input.value="";renderTeam(await window.brightside.sendTeamMessage(value));};
-$("#teamAttach").onclick=async()=>renderTeam(await window.brightside.attachTeamFiles());
 $("#copyTerminalBtn").onclick=async()=>{const command=`xattr -dr com.apple.quarantine "/Applications/Brightside Film Remote.app"`;await navigator.clipboard.writeText(command);$("#copyTerminalBtn").textContent="Kopieret";};
 setTimeout(()=>{$("#brandSplash")?.classList.add("done");setTimeout(()=>$("#brandSplash")?.remove(),650);},2500);
 initialize();

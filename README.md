@@ -1,8 +1,20 @@
-# Brightside Film Remote — version 0.3.0
+# Brightside Film Remote — version 0.7.0
 
 En lokal Apple Silicon Mac-app med synlig Higgsfield-browser, dansk chat og stemmestyring, filmspecialiseret promptarbejde, Kessler-projektprofil og godkendelse før credit-forbrug.
 
-Appen indeholder et workflow-kort til Higgsfield Image, Seedance 2.5, Cinema Studio 4.0, Video Edit, Motion Control, Reframe og Genjutsu. Den integrerede Billedmager bruger GPT Image 2 til keyframes, character sheets, location maps, continuity sheets, props og lys-/linse-referencer. Projektbilleder kan bruges som high-fidelity input, og nye billeder lægges automatisk i projektets visuelle hukommelse.
+Version 0.7.0 er den personlige Nicolas/Admin-udgave. Flerbruger, fælles login og Supabase er bevidst taget ud af brugerfladen, så den lokale filmproduktion er enkel og robust først.
+
+## Production Bible
+
+- Én lokal KESSLER Production Bible i både JSON og læsbar Markdown.
+- Låst visuel stil, kamera/linse, karakterkontinuitet, location/lys og negative regler.
+- Scene → shot-struktur med engine, prompt og status.
+- Readiness-kontrol før en scene sendes i produktion.
+- Character sheets og location maps bindes som låste elementer til den aktive scene.
+- Separat baggrundslag til kontrolleret udskiftning af miljø uden at ændre forgrund, performance, timing eller kamera.
+- Anchor frame og rød/gul/grøn vurdering af Work- og Final-takes.
+
+Appen indeholder et Engine Center til Higgsfield Image, Seedance 2.5/2.0, Supercomputer, Cinema Studio, Video Edit, Motion Control, Reframe, Genjutsu samt promptkontrakter og officielle links til Veo, Kling og Runway. Den integrerede Billedmager bruger GPT Image 2 til keyframes, character sheets, location maps, continuity sheets, props og lys-/linse-referencer.
 
 Kessler arbejder som standard udelukkende i CinemaScope 2.39:1. Workflowvælgeren kan stå på Auto eller låses til Supercomputer, Seedance 2.5, Seedance 2.0, Genjutsu eller Cinema Studio. Auto vælger model efter opgaven: 2.5 til komplekse fler-beat shots og performance, 2.0 til native 4K og detalje, Genjutsu til Motion Transfer/Object Swap og Supercomputer til flertrins- og batchproduktion.
 
@@ -27,7 +39,9 @@ Kør `npm run dist:mac`. Den usignerede Apple Silicon `.zip` lægges i `dist`. P
 - Appen søger automatisk efter nye versioner ved start og derefter hver sjette time.
 - Opdateringer hentes kun fra Brightsides faste GitHub-kanal og kontrolleres med SHA-256 før installation.
 - Login, API-nøgle, projektmateriale og referencer ligger uden for app-pakken og bevares ved opdatering.
-- Alt projektmateriale gemmes synligt i `Film/Brightside Film Remote/KESSLER` på Mac'en. Her oprettes mapper til prompts, character sheets, location maps, genererede billeder og importerede referencer.
+- Alt projektmateriale gemmes synligt i `Film/Brightside Film Remote/KESSLER` på Mac'en. Production Bible, scener, prompts, character sheets, location maps, genererede billeder og importerede referencer får egne mapper.
+- State gemmes atomisk med en lokal backup, så et afbrudt save ikke så let kan ødelægge projektet.
+- “Kopiér til Final” bevarer Work-originalen. Allan-mastere versionsnummereres også mod filer, der allerede ligger i leveringsmappen.
 - Betaling og køb er ikke en del af denne testversion.
 
 ## Kessler-profil
