@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="extras.css" />
 </head>
 <body>
+  <div id="brandSplash" class="brandSplash" aria-label="Brightside Film Remote starter"><div class="splashMark">B</div><div class="splashBrand">BRIGHTSIDE</div><div class="splashTitle">KESSLER · FILM REMOTE</div><div class="splashLine"></div></div>
   <header class="topbar">
     <div class="brand"><span class="mark">B</span><strong>BRIGHTSIDE</strong><span>FILM REMOTE</span></div>
     <div class="browserbar"><button id="homeBtn">Higgsfield</button><span id="url">higgsfield.ai</span></div>
@@ -46,9 +47,9 @@
     <main id="continuity" class="panel">
       <section class="identityHead"><span class="eyebrow">SCENER & KONTINUITET</span><h2>KESSLER-universet</h2><p>Genbrug karakterer og locations på tværs af filmen. Den aktive scene styrer automatisk, hvor prompts og downloads lander.</p></section>
       <section class="identityBlock">
-        <form id="newSceneForm" class="sceneCreate"><input id="newSceneName" placeholder="Fx: Scene 14 · Omklædningsrummet" required /><button class="send" type="submit">+ Ny scene</button></form>
+        <form id="newSceneForm" class="sceneCreate"><input id="newSceneName" placeholder="Fx: Scene 14 · Omklædningsrummet" required /><label class="privacyToggle"><input id="newScenePrivate" type="checkbox" /><span>Kun hos mig</span></label><button class="send" type="submit">+ Ny scene</button></form>
         <label class="scenePicker">Aktiv scene<select id="sceneSelect"><option value="">Ingen scene endnu</option></select></label>
-        <div class="row"><p id="activeScenePath" class="hint">Opret en scene for at begynde.</p><button id="openSceneFolderBtn" class="small">Åbn scenemappe</button></div>
+        <div class="row"><p id="activeScenePath" class="hint">Opret en scene for at begynde.</p><button id="openSceneFolderBtn" class="small">Åbn scenemappe</button></div><div class="adminPrivacy"><span class="status">ADMIN</span><label class="privacyToggle"><input id="scenePrivate" type="checkbox" disabled /><span>Kun hos mig</span></label><span id="privacyStatus" class="hint">Delt scene · klar til teamsynk</span></div>
       </section>
       <section class="identityBlock">
         <div class="row"><div><h3>Karakterer</h3><p class="hint">Faste ansigter, kostumer, skader og alder.</p></div><button id="importCharactersBtn" class="small">+ Upload</button></div>
@@ -71,6 +72,11 @@
         <h3>Final</h3><p class="hint">Kun de godkendte elementer, du vil tage videre i produktionen.</p>
         <div id="sceneFinal" class="fileStack"></div>
       </section>
+      <section class="identityBlock allanDelivery"><div class="row"><div><span class="eyebrow">KLIPPER-AFLEVERING</span><h3>Godkendt til Allan</h3></div><span class="status">25 FPS · 2.39:1</span></div>
+        <p class="hint">Godkend en Final-fil. Appen kopierer en master med unikt scenenummer og versionsnummer. Originalen bliver liggende.</p>
+        <div class="row allanFolderRow"><span id="allanFolder" class="folderPath">Lokal standardmappe</span><button id="chooseAllanFolderBtn" class="small">Vælg leveringsmappe</button><button id="openAllanFolderBtn" class="small">Åbn</button></div>
+        <p id="allanStatus" class="hint">Ingen mastere afleveret fra denne scene endnu.</p><div id="allanDeliveries" class="deliveryList"></div>
+      </section>
     </main>
     <main id="identity" class="panel">
       <section class="identityHead"><span class="eyebrow">PROJEKTHUKOMMELSE</span><h2>KESSLER</h2><p>Den låste kerne beskytter filmens look. Tilføjede filer udvider profilen uden at erstatte den.</p></section>
@@ -90,6 +96,16 @@
       <section class="identityBlock"><div class="row"><h3>Lookbooks og referencer</h3><button id="importBtn" class="small">+ Tilføj</button></div><div id="imports" class="imports"></div></section>
     </main>
   </aside>
+  <button id="teamFab" class="teamFab" aria-label="Åbn KESSLER teamchat"><span>●</span> Team</button>
+  <aside id="teamPanel" class="teamPanel"><header><div><span class="eyebrow">KESSLER TEAM</span><h3>Brightside chat</h3></div><button id="teamClose" class="iconBtn">×</button></header><div id="teamConnection" class="teamConnection">LOKAL KØ</div><details class="deviceDetails" open><summary>Installerede enheder · Admin</summary><div id="deviceList"></div></details><div id="teamMessages" class="teamMessages"></div><form id="teamComposer" class="teamComposer"><button id="teamAttach" type="button" title="Vedhæft filer">＋</button><input id="teamInput" placeholder="Skriv til KESSLER-teamet…" /><button class="send" type="submit">Send</button></form></aside>
+  <dialog id="onboardingDialog" class="onboardingDialog">
+    <div class="welcomeMark">B</div><span class="eyebrow">EN HILSEN FRA NICOLAS</span><h2>Velkommen til Brightside Film Remote</h2>
+    <p>Bygget til KESSLER-teamet. Vi arbejder i samme filmiske univers, 2.39:1 og 25 fps.</p><label>Dit navn på denne Mac<input id="onboardingName" value="Nicolas" /></label>
+    <ol class="setupSteps"><li>Flyt Brightside Film Remote til Programmer.</li><li>Højreklik på appen og vælg Åbn første gang.</li><li>Log ind i Higgsfield én gang på denne Mac. Login huskes lokalt.</li></ol>
+    <div class="terminalHelp"><strong>Kun hvis macOS stadig blokerer</strong><p>Åbn Terminal, indsæt kommandoen og tryk Retur.</p><code>xattr -dr com.apple.quarantine "/Applications/Brightside Film Remote.app"</code><button id="copyTerminalBtn" class="small">Kopiér Terminal-kommando</button></div>
+    <p class="hint">Dit Higgsfield-password deles aldrig i installationsfilen.</p>
+    <div class="dialogActions"><button id="onboardingLoginBtn">Åbn Higgsfield-login</button><button id="onboardingDoneBtn" class="send">Kom i gang</button></div>
+  </dialog>
   <dialog id="settingsDialog"><form method="dialog"><h2>Indstillinger</h2><label>OpenAI API-nøgle<input id="apiKey" type="password" placeholder="sk-…" autocomplete="off" /></label><label>AI-model<select id="model"><option value="gpt-5.6-terra">GPT-5.6 Terra · anbefalet</option><option value="gpt-5.6-sol">GPT-5.6 Sol · højeste filmkvalitet</option><option value="gpt-5.6-luna">GPT-5.6 Luna · billigst</option><option value="gpt-6-astra">GPT-6 Astra · sværeste opgaver</option></select></label><label class="checkLabel"><input id="autoUpdate" type="checkbox" checked /> Søg automatisk efter nye versioner</label><div class="row"><span id="updateStatus" class="hint">Sikker Brightside-opdateringskanal</span><button id="checkUpdateBtn" type="button" class="updatePrimary">Hent og installer nyeste version</button></div><p class="hint">Nøglen krypteres lokalt på denne Mac. Higgsfield-login bliver i appens lokale browserprofil.</p><div class="dialogActions"><button value="cancel">Annuller</button><button id="saveSettings" value="default" class="send">Gem</button></div></form></dialog>
   <dialog id="approvalDialog"><div class="approvalIcon">!</div><h2>Godkend generering</h2><p id="approvalText"></p><p class="hint" id="approvalRisk"></p><div class="dialogActions"><button id="denyBtn">Stop</button><button id="approveBtn">Godkend én generering</button><button id="approveTenBtn" class="danger">Godkend 10 genereringer</button></div></dialog>
   <script src="renderer.js"></script>

@@ -4,6 +4,7 @@ let mediaRecorder;
 let chunks = [];
 let appState;
 let continuityState;
+let teamState;
 
 function addMessage(role, text) {
   const article = document.createElement("article");
@@ -42,14 +43,24 @@ function renderWorkflows(items) {
   });
 }
 
+
+function renderTeam(data){
+  teamState=data;$("#teamConnection").textContent=data.backendReady?"ONLINE · SYNKRONISERET":"LOKAL KØ · SUPABASE MANGLER";
+  const devices=$("#deviceList");devices.textContent="";(data.devices||[]).forEach(device=>{const row=document.createElement("div");row.className="deviceRow";const info=document.createElement("div");const strong=document.createElement("strong");strong.textContent=device.name;const sub=document.createElement("span");sub.textContent=`${device.user} · ${device.role==="admin"?"Admin":"Team"} · v${device.version}`;info.append(strong,sub);const live=document.createElement("span");live.className="onlineDot";live.textContent=device.online?"Online":"Offline";row.append(info,live);devices.appendChild(row);});
+  const messages=$("#teamMessages");messages.textContent="";(data.messages||[]).forEach(item=>{const article=document.createElement("article");article.className="teamMessage";const meta=document.createElement("div");meta.textContent=`${item.author} · ${new Date(item.createdAt).toLocaleString("da-DK")}`;const body=document.createElement("p");body.textContent=item.text;article.append(meta,body);if(item.attachment){const file=document.createElement("button");file.className="small";file.textContent=`📎 ${item.attachment}`;file.onclick=()=>window.brightside.openTeamAttachments();article.appendChild(file);}if(item.pendingSync){const pending=document.createElement("span");pending.className="pending";pending.textContent="Venter på teamsynk";article.appendChild(pending);}messages.appendChild(article);});messages.scrollTop=messages.scrollHeight;
+}
+async function refreshTeam(){renderTeam(await window.brightside.getTeam());}
+
 async function initialize() {
   appState = await window.brightside.getState();
+  if(!appState.onboardingCompleted) $("#onboardingDialog").showModal();
   $("#model").value = appState.model || "gpt-5.6-terra";
   $("#autoUpdate").checked = appState.autoUpdate !== false;
   renderImports(appState.imports || []);
   renderWorkflows(appState.workflows || []);
   await refreshContinuity();
   await refreshAiKnowledge();
+  await refreshTeam();
 }
 
 document.querySelectorAll("[data-tab]").forEach(btn => btn.addEventListener("click", () => {
@@ -122,14 +133,16 @@ function renderAssetGrid(selector, assets, selectable=false) {
   assets.forEach(asset=>root.appendChild(assetCard(asset,selectable)));
 }
 
-function renderFileStack(selector, files, canFinalize=false) {
+function renderFileStack(selector, files, mode="plain") {
   const root=$(selector); root.textContent="";
   if(!files.length){const empty=document.createElement("p");empty.className="hint";empty.textContent="Mappen er tom.";root.appendChild(empty);return;}
   files.forEach(file=>{
     const row=document.createElement("div");row.className="sceneFile";
     if(file.thumbnail){const img=document.createElement("img");img.src=file.thumbnail;img.alt=file.name;row.appendChild(img);}
     const name=document.createElement("span");name.textContent=file.name;name.title=file.name;row.appendChild(name);
-    if(canFinalize){const button=document.createElement("button");button.className="small";button.textContent="Flyt til Final";button.onclick=async()=>renderContinuity(await window.brightside.moveWorkToFinal(file.name));row.appendChild(button);}
+    if(mode==="work"){const button=document.createElement("button");button.className="small";button.textContent="Flyt til Final";button.onclick=async()=>renderContinuity(await window.brightside.moveWorkToFinal(file.name));row.appendChild(button);}
+    if(mode==="final"){const button=document.createElement("button");button.className="small allanButton";button.textContent="Godkend til Allan";button.onclick=async()=>{button.disabled=true;try{renderContinuity(await window.brightside.deliverFinalToEditor(file.name));}catch(error){$("#allanStatus").textContent=error.message;}finally{button.disabled=false;}};row.appendChild(button);}
+    if(mode==="work"||mode==="final"){const privacy=document.createElement("label");privacy.className="filePrivacy";const check=document.createElement("input");check.type="checkbox";check.checked=Boolean(file.privateOnly);check.disabled=continuityState?.currentUserRole!=="admin";check.onchange=async()=>renderContinuity(await window.brightside.setAssetPrivate({category:mode,filename:file.name,privateOnly:check.checked}));const label=document.createElement("span");label.textContent="Kun hos mig";privacy.append(check,label);row.appendChild(privacy);}
     root.appendChild(row);
   });
 }
@@ -147,8 +160,11 @@ function renderContinuity(data) {
   renderAssetGrid("#characterAssets",data.characters||[],true);
   renderAssetGrid("#locationAssets",data.locations||[],true);
   renderAssetGrid("#sceneReferences",data.references||[],false);
-  renderFileStack("#sceneWork",data.work||[],true);
-  renderFileStack("#sceneFinal",data.final||[],false);
+  renderFileStack("#sceneWork",data.work||[],"work");
+  renderFileStack("#sceneFinal",data.final||[],"final");
+  const isAdmin=data.currentUserRole==="admin";$("#scenePrivate").disabled=!active||!isAdmin;$("#scenePrivate").checked=Boolean(active?.privateOnly);$("#privacyStatus").textContent=active?.privateOnly?"Privat scene · bliver kun på denne Mac":"Delt scene · klar til teamsynk";
+  $("#allanFolder").textContent=data.editorDeliveryCustom?data.editorDeliveryDir:"Lokal standardmappe · vælg en delt mappe på Allans Mac";$("#allanStatus").textContent=(data.editorDeliveries||[]).length?`${data.editorDeliveries.length} masterlevering(er) · 25 fps · CinemaScope`:"Ingen mastere afleveret fra denne scene endnu.";
+  const deliveryRoot=$("#allanDeliveries");deliveryRoot.textContent="";(data.editorDeliveries||[]).slice().reverse().forEach(item=>{const row=document.createElement("div");row.className="deliveryRow";const name=document.createElement("strong");name.textContent=item.masterName;const time=document.createElement("span");time.textContent=new Date(item.approvedAt).toLocaleString("da-DK");row.append(name,time);deliveryRoot.appendChild(row);});
 }
 
 async function refreshContinuity(){renderContinuity(await window.brightside.getContinuity());}
@@ -156,7 +172,7 @@ async function refreshContinuity(){renderContinuity(await window.brightside.getC
 $("#newSceneForm").addEventListener("submit",async event=>{
   event.preventDefault();
   const input=$("#newSceneName"); const title=input.value.trim(); if(!title)return;
-  renderContinuity(await window.brightside.createScene(title)); input.value="";
+  renderContinuity(await window.brightside.createScene({title,privateOnly:$("#newScenePrivate").checked})); input.value="";$("#newScenePrivate").checked=false;
 });
 $("#sceneSelect").onchange=async event=>{if(event.target.value)renderContinuity(await window.brightside.activateScene(event.target.value));};
 $("#importCharactersBtn").onclick=async()=>renderContinuity(await window.brightside.importContinuity("character"));
@@ -168,6 +184,9 @@ $("#addElementsBtn").onclick=async()=>{
   renderContinuity(await window.brightside.addElementsToScene(ids));
 };
 $("#openSceneFolderBtn").onclick=()=>window.brightside.openSceneFolder();
+$("#scenePrivate").onchange=async event=>renderContinuity(await window.brightside.setScenePrivate(event.target.checked));
+$("#chooseAllanFolderBtn").onclick=async()=>renderContinuity(await window.brightside.chooseEditorDeliveryFolder());
+$("#openAllanFolderBtn").onclick=()=>window.brightside.openEditorDeliveryFolder();
 $("#topUpdateBtn").onclick=()=>window.brightside.checkForUpdates();
 window.brightside.onContinuityChanged(data=>renderContinuity(data));
 
@@ -205,4 +224,11 @@ $("#saveAiTextBtn").onclick=async()=>{
   }catch(error){$("#aiKnowledgeStatus").textContent=`Kunne ikke gemme: ${error.message}`;}
 };
 
+$("#onboardingLoginBtn").onclick=()=>window.brightside.navigate("https://higgsfield.ai");
+$("#onboardingDoneBtn").onclick=async()=>{await window.brightside.completeOnboarding($("#onboardingName").value);$("#onboardingDialog").close();await refreshTeam();};
+$("#teamFab").onclick=()=>$("#teamPanel").classList.toggle("open");$("#teamClose").onclick=()=>$("#teamPanel").classList.remove("open");
+$("#teamComposer").onsubmit=async event=>{event.preventDefault();const input=$("#teamInput"),value=input.value.trim();if(!value)return;input.value="";renderTeam(await window.brightside.sendTeamMessage(value));};
+$("#teamAttach").onclick=async()=>renderTeam(await window.brightside.attachTeamFiles());
+$("#copyTerminalBtn").onclick=async()=>{const command=`xattr -dr com.apple.quarantine "/Applications/Brightside Film Remote.app"`;await navigator.clipboard.writeText(command);$("#copyTerminalBtn").textContent="Kopieret";};
+setTimeout(()=>{$("#brandSplash")?.classList.add("done");setTimeout(()=>$("#brandSplash")?.remove(),650);},1500);
 initialize();

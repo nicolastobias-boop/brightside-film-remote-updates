@@ -1,6 +1,7 @@
 const { app, BrowserWindow, WebContentsView, ipcMain, dialog, safeStorage, session, nativeImage, shell } = require("electron");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const { execFileSync } = require("child_process");
 const OpenAI = require("openai");
 const { toFile } = require("openai");
@@ -29,6 +30,9 @@ const sceneDir = scene => path.join(scenesDir(), scene.folder);
 const sceneRefsDir = scene => path.join(sceneDir(scene), "Referencer");
 const sceneWorkDir = scene => path.join(sceneDir(scene), "Work");
 const sceneFinalDir = scene => path.join(sceneDir(scene), "Final");
+const localEditorDeliveryDir = () => path.join(masterDir(), "Godkendt til Allan");
+const teamDir = () => path.join(masterDir(), "Team");
+const teamAttachmentsDir = () => path.join(teamDir(), "Vedhæftninger");
 
 function safeFilePart(value) {
   return String(value || "reference").replace(/[^a-z0-9æøå_-]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "reference";
@@ -60,7 +64,7 @@ function ensureSceneFolders(scene) {
 }
 
 function ensureMasterFolder() {
-  [masterDir(), assetDir(), importedDir(), promptDir(), elementsDir(), characterDir(), locationDir(), scenesDir(), aiKnowledgeDir(), path.join(masterDir(), "Character sheets"), path.join(masterDir(), "Location maps")]
+  [masterDir(), assetDir(), importedDir(), promptDir(), elementsDir(), characterDir(), locationDir(), scenesDir(), aiKnowledgeDir(), localEditorDeliveryDir(), teamDir(), teamAttachmentsDir(), path.join(masterDir(), "Character sheets"), path.join(masterDir(), "Location maps")]
     .forEach(directory => fs.mkdirSync(directory, { recursive: true }));
   copyLegacyElements(path.join(masterDir(), "Character sheets"), characterDir());
   copyLegacyElements(path.join(masterDir(), "Location maps"), locationDir());
@@ -94,7 +98,7 @@ function appendPromptLog(userText, assistantText) {
 }
 
 function initialState() {
-  return { project: KESSLER_PROFILE, imports: [], aiKnowledge: [], scenes: [], activeSceneId: null, model: "gpt-5.6-terra", encryptedApiKey: null, conversation: [], autoUpdate: true, updateFeedUrl: "" };
+  return { project: KESSLER_PROFILE, imports: [], aiKnowledge: [], scenes: [], activeSceneId: null, currentUserRole: "admin", currentUserName: "Nicolas", onboardingCompleted: false, teamMessages: [], editorName: "Allan", editorDeliveryDir: "", editorDeliveries: [], privateAssets: {}, model: "gpt-5.6-terra", encryptedApiKey: null, conversation: [], autoUpdate: true, updateFeedUrl: "" };
 }
 
 function loadState() {
@@ -103,6 +107,9 @@ function loadState() {
     if (!Array.isArray(state.imports)) state.imports = [];
     if (!Array.isArray(state.aiKnowledge)) state.aiKnowledge = [];
     if (!Array.isArray(state.scenes)) state.scenes = [];
+    if (!Array.isArray(state.editorDeliveries)) state.editorDeliveries = [];
+    if (!Array.isArray(state.teamMessages)) state.teamMessages = [];
+    if (!state.privateAssets || typeof state.privateAssets !== "object") state.privateAssets = {};
     return state;
   } catch { return initialState(); }
 }
@@ -142,22 +149,29 @@ function continuitySnapshot() {
   const scene = activeScene(state);
   if (scene) ensureSceneFolders(scene);
   return {
-    scenes: state.scenes.map(item => ({id:item.id, title:item.title, folder:item.folder, active:item.id === state.activeSceneId})),
+    scenes: state.scenes.map(item => ({id:item.id, title:item.title, folder:item.folder, privateOnly:Boolean(item.privateOnly), active:item.id === state.activeSceneId})),
     activeSceneId: state.activeSceneId,
+    currentUserRole: state.currentUserRole || "admin",
     characters: listAssets(characterDir(), "character"),
     locations: listAssets(locationDir(), "location"),
     references: scene ? listAssets(sceneRefsDir(scene), "reference") : [],
-    work: scene ? listAssets(sceneWorkDir(scene), "work") : [],
-    final: scene ? listAssets(sceneFinalDir(scene), "final") : []
+    work: scene ? listAssets(sceneWorkDir(scene), "work").map(item => ({...item, privateOnly:Boolean(state.privateAssets[`${scene.id}:work:${item.name}`])})) : [],
+    final: scene ? listAssets(sceneFinalDir(scene), "final").map(item => ({...item, privateOnly:Boolean(state.privateAssets[`${scene.id}:final:${item.name}`])})) : [],
+    editorName: state.editorName || "Allan",
+    editorDeliveryDir: state.editorDeliveryDir || localEditorDeliveryDir(),
+    editorDeliveryCustom: Boolean(state.editorDeliveryDir),
+    editorDeliveries: scene ? state.editorDeliveries.filter(item => item.sceneId === scene.id) : []
   };
 }
 
-function createScene(title) {
+function createScene(payload) {
   const state = loadState();
+  const title = typeof payload === "string" ? payload : payload?.title;
+  const privateOnly = typeof payload === "object" && Boolean(payload?.privateOnly);
   const cleanTitle = String(title || "").trim();
   if (!cleanTitle) throw new Error("Skriv et navn til scenen.");
   const number = String(state.scenes.length + 1).padStart(3, "0");
-  const scene = {id:`${Date.now()}-${Math.random().toString(36).slice(2,7)}`, title:cleanTitle, folder:`${number}-${safeFilePart(cleanTitle)}`, createdAt:new Date().toISOString()};
+  const scene = {id:`${Date.now()}-${Math.random().toString(36).slice(2,7)}`, title:cleanTitle, folder:`${number}-${safeFilePart(cleanTitle)}`, privateOnly, createdAt:new Date().toISOString()};
   state.scenes.push(scene);
   state.activeSceneId = scene.id;
   ensureSceneFolders(scene);
@@ -218,6 +232,63 @@ function moveWorkToFinal(filename) {
   const destination = uniqueDestination(sceneFinalDir(scene), safeName);
   fs.renameSync(source, destination);
   return continuitySnapshot();
+}
+
+function teamSnapshot() {
+  const state=loadState();
+  return {online:false,backendReady:false,currentUser:{name:state.currentUserName||"Nicolas",role:state.currentUserRole||"admin"},devices:[{id:state.deviceId||"local",name:os.hostname(),user:state.currentUserName||"Nicolas",role:state.currentUserRole||"admin",version:app.getVersion(),lastSeen:new Date().toISOString(),online:true}],messages:state.teamMessages.slice(-200).map(({attachmentPath:_p,...item})=>item)};
+}
+function saveTeamProfile(name) {
+  const state=loadState(); const clean=String(name||"").trim(); if(clean) state.currentUserName=clean; if(!state.deviceId) state.deviceId=`${Date.now()}-${Math.random().toString(36).slice(2,8)}`; saveState(state); return teamSnapshot();
+}
+function sendTeamMessage(text) {
+  const state=loadState(),clean=String(text||"").trim(); if(!clean) return teamSnapshot();
+  state.teamMessages.push({id:`${Date.now()}-${Math.random().toString(36).slice(2,7)}`,author:state.currentUserName||"Nicolas",text:clean,createdAt:new Date().toISOString(),pendingSync:true}); saveState(state); return teamSnapshot();
+}
+async function attachTeamFiles() {
+  const state=loadState(),result=await dialog.showOpenDialog(mainWindow,{title:"Vedhæft filer til KESSLER-chatten",properties:["openFile","multiSelections"]}); if(result.canceled) return teamSnapshot();
+  fs.mkdirSync(teamAttachmentsDir(),{recursive:true});
+  for(const source of result.filePaths){const destination=uniqueDestination(teamAttachmentsDir(),path.basename(source));fs.copyFileSync(source,destination);state.teamMessages.push({id:`${Date.now()}-${Math.random().toString(36).slice(2,7)}`,author:state.currentUserName||"Nicolas",text:"Vedhæftede en fil",attachment:path.basename(destination),attachmentPath:destination,createdAt:new Date().toISOString(),pendingSync:true});}
+  saveState(state); return teamSnapshot();
+}
+function openTeamAttachments(){fs.mkdirSync(teamAttachmentsDir(),{recursive:true});return shell.openPath(teamAttachmentsDir());}
+
+function assertAdmin(state) {
+  if ((state.currentUserRole || "admin") !== "admin") throw new Error("Kun en Brightside Admin kan ændre privatstatus.");
+}
+function setScenePrivate(privateOnly) {
+  const state=loadState(); assertAdmin(state); const scene=activeScene(state); if(!scene) throw new Error("Vælg først en scene.");
+  scene.privateOnly=Boolean(privateOnly); saveState(state); return continuitySnapshot();
+}
+function setAssetPrivate({category,filename,privateOnly}) {
+  const state=loadState(); assertAdmin(state); const scene=activeScene(state); if(!scene) throw new Error("Vælg først en scene.");
+  if(!["work","final"].includes(category)) throw new Error("Ugyldig mappe.");
+  const safeName=path.basename(String(filename||"")), directory=category==="work"?sceneWorkDir(scene):sceneFinalDir(scene);
+  if(!safeName||!fs.existsSync(path.join(directory,safeName))) throw new Error("Filen kunne ikke findes.");
+  const key=`${scene.id}:${category}:${safeName}`; if(privateOnly) state.privateAssets[key]=true; else delete state.privateAssets[key];
+  saveState(state); return continuitySnapshot();
+}
+function editorMasterName(scene,filename,version) {
+  const parsed=path.parse(filename),number=String(scene.folder||"000").split("-")[0].padStart(3,"0");
+  return `KESSLER_SC${number}_${safeFilePart(scene.title).toUpperCase()}_${safeFilePart(parsed.name).toUpperCase()}_MASTER_v${String(version).padStart(3,"0")}${parsed.ext.toLowerCase()}`;
+}
+async function chooseEditorDeliveryFolder() {
+  const state=loadState(), result=await dialog.showOpenDialog(mainWindow,{title:"Vælg Allans leveringsmappe",defaultPath:state.editorDeliveryDir||localEditorDeliveryDir(),properties:["openDirectory","createDirectory"]});
+  if(result.canceled||!result.filePaths[0]) return continuitySnapshot(); state.editorDeliveryDir=result.filePaths[0]; saveState(state); return continuitySnapshot();
+}
+function deliverFinalToEditor(filename) {
+  const state=loadState(),scene=activeScene(state); if(!scene) throw new Error("Vælg først en scene.");
+  const safeName=path.basename(String(filename||"")); if(scene.privateOnly||state.privateAssets[`${scene.id}:final:${safeName}`]) throw new Error("Filen er markeret Kun hos mig. Fjern fluebenet før aflevering til Allan.");
+  const source=path.join(sceneFinalDir(scene),safeName); if(!safeName||!fs.existsSync(source)) throw new Error("Final-filen kunne ikke findes.");
+  const root=state.editorDeliveryDir||localEditorDeliveryDir(),destinationDir=path.join(root,scene.folder); fs.mkdirSync(destinationDir,{recursive:true});
+  const version=state.editorDeliveries.filter(item=>item.sceneId===scene.id&&item.sourceName===safeName).length+1,masterName=editorMasterName(scene,safeName,version),destination=path.join(destinationDir,masterName);
+  fs.copyFileSync(source,destination); state.editorDeliveries.push({id:`${Date.now()}-${Math.random().toString(36).slice(2,7)}`,sceneId:scene.id,sceneTitle:scene.title,sceneFolder:scene.folder,sourceName:safeName,masterName,version,approvedFor:state.editorName||"Allan",approvedAt:new Date().toISOString(),destination}); saveState(state);
+  const deliveries=state.editorDeliveries.filter(item=>item.sceneId===scene.id).map(({destination:_p,...item})=>item);
+  fs.writeFileSync(path.join(destinationDir,"BRIGHTSIDE-delivery-manifest.json"),JSON.stringify({project:"KESSLER",frameRate:25,aspectRatio:"2.39:1",scene:{id:scene.id,title:scene.title,folder:scene.folder},deliveries},null,2));
+  return continuitySnapshot();
+}
+function openEditorDeliveryFolder() {
+  const state=loadState(),directory=state.editorDeliveryDir||localEditorDeliveryDir(); fs.mkdirSync(directory,{recursive:true}); return shell.openPath(directory);
 }
 
 function activeSceneReferencePaths(state) {
@@ -611,6 +682,12 @@ app.whenReady().then(() => {
   checkForUpdates = setupUpdater({getSettings:loadState, notify:message => mainWindow?.webContents.send("update:status", message)});
   ipcMain.handle("state:get", () => { const s = loadState(); return {...s, encryptedApiKey:undefined, hasApiKey:Boolean(getApiKey(s)), imports:s.imports.map(({path:_p,...x})=>x), workflows:HIGGSFIELD_WORKFLOWS}; });
   ipcMain.handle("settings:save", (_e, {apiKey, model, autoUpdate, updateFeedUrl}) => { const s=loadState(); if(apiKey) s.encryptedApiKey=safeStorage.encryptString(apiKey).toString("base64"); if(model) s.model=model; if(typeof autoUpdate==="boolean") s.autoUpdate=autoUpdate; if(typeof updateFeedUrl==="string") s.updateFeedUrl=updateFeedUrl.trim(); saveState(s); return {ok:true, hasApiKey:Boolean(getApiKey(s))}; });
+  ipcMain.handle("onboarding:complete", (_e, name) => { const s=loadState(); if(String(name||"").trim()) s.currentUserName=String(name).trim(); if(!s.deviceId) s.deviceId=`${Date.now()}-${Math.random().toString(36).slice(2,8)}`; s.onboardingCompleted=true; saveState(s); return {ok:true}; });
+  ipcMain.handle("team:get", () => teamSnapshot());
+  ipcMain.handle("team:profile", (_e, name) => saveTeamProfile(name));
+  ipcMain.handle("team:send", (_e, text) => sendTeamMessage(text));
+  ipcMain.handle("team:attach", () => attachTeamFiles());
+  ipcMain.handle("team:open-attachments", () => openTeamAttachments());
   ipcMain.handle("assistant:run", (_e, text, engine) => runAssistant(text, engine));
   ipcMain.handle("project:import", () => importFiles());
   ipcMain.handle("project:remove", (_e, id) => { const s=loadState(); const item=s.imports.find(x=>x.id===id); if(item) fs.unlink(item.path,()=>{}); s.imports=s.imports.filter(x=>x.id!==id); saveState(s); return s.imports.map(({path:_p,...x})=>x); });
@@ -635,6 +712,11 @@ app.whenReady().then(() => {
   ipcMain.handle("continuity:import", (_e, category) => importContinuityFiles(category));
   ipcMain.handle("scene:add-elements", (_e, ids) => addElementsToScene(ids));
   ipcMain.handle("scene:move-final", (_e, filename) => moveWorkToFinal(filename));
+  ipcMain.handle("scene:set-private", (_e, value) => setScenePrivate(value));
+  ipcMain.handle("asset:set-private", (_e, payload) => setAssetPrivate(payload));
+  ipcMain.handle("editor:choose-folder", () => chooseEditorDeliveryFolder());
+  ipcMain.handle("editor:deliver", (_e, filename) => deliverFinalToEditor(filename));
+  ipcMain.handle("editor:open-folder", () => openEditorDeliveryFolder());
   ipcMain.handle("scene:open-folder", () => {
     const scene = activeScene();
     return shell.openPath(scene ? sceneDir(scene) : scenesDir());
