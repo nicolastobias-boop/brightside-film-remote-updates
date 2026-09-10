@@ -28,6 +28,8 @@ const scenesDir = () => path.join(masterDir(), "Scener");
 const aiKnowledgeDir = () => path.join(masterDir(), "AI-viden");
 const sceneDir = scene => path.join(scenesDir(), scene.folder);
 const sceneRefsDir = scene => path.join(sceneDir(scene), "Referencer");
+const sceneRefImagesDir = scene => path.join(sceneRefsDir(scene), "Billeder");
+const sceneRefFilmsDir = scene => path.join(sceneRefsDir(scene), "Film");
 const sceneWorkDir = scene => path.join(sceneDir(scene), "Work");
 const sceneFinalDir = scene => path.join(sceneDir(scene), "Final");
 const localEditorDeliveryDir = () => path.join(masterDir(), "Godkendt til Allan");
@@ -70,7 +72,7 @@ function copyLegacyElements(source, destination) {
 }
 
 function ensureSceneFolders(scene) {
-  [sceneDir(scene), sceneRefsDir(scene), sceneWorkDir(scene), sceneFinalDir(scene)]
+  [sceneDir(scene), sceneRefsDir(scene), sceneRefImagesDir(scene), sceneRefFilmsDir(scene), sceneWorkDir(scene), sceneFinalDir(scene)]
     .forEach(directory => fs.mkdirSync(directory, {recursive:true}));
 }
 
@@ -167,6 +169,16 @@ function listAssets(directory, category) {
     });
 }
 
+function listReferenceMedia(scene,state) {
+  const decorate=(items,kind)=>items.map(item=>({...item,kind,binding:state.sceneBindings.find(binding=>binding.sceneId===scene.id&&binding.sceneFile===item.name)||null,isAnchor:scene.anchorFrame===`${kind}/${item.name}`}));
+  const legacy=decorate(listAssets(sceneRefsDir(scene),"reference"),"reference");
+  return {
+    images:[...legacy.filter(item=>/\.(jpe?g|png|webp)$/i.test(item.name)),...decorate(listAssets(sceneRefImagesDir(scene),"reference-image"),"image")],
+    films:decorate(listAssets(sceneRefFilmsDir(scene),"reference-film"),"film"),
+    documents:legacy.filter(item=>!/\.(jpe?g|png|webp)$/i.test(item.name))
+  };
+}
+
 function activeScene(state = loadState()) {
   return state.scenes.find(scene => scene.id === state.activeSceneId) || null;
 }
@@ -175,13 +187,17 @@ function continuitySnapshot() {
   const state = loadState();
   const scene = activeScene(state);
   if (scene) ensureSceneFolders(scene);
+  const media=scene?listReferenceMedia(scene,state):{images:[],films:[],documents:[]};
   return {
     scenes: state.scenes.map(item => ({id:item.id, title:item.title, folder:item.folder, privateOnly:Boolean(item.privateOnly), anchorFrame:item.anchorFrame||"", active:item.id === state.activeSceneId})),
     activeSceneId: state.activeSceneId,
     currentUserRole: "admin",
     characters: listAssets(characterDir(), "character"),
     locations: listAssets(locationDir(), "location"),
-    references: scene ? listAssets(sceneRefsDir(scene), "reference").map(item=>({...item,binding:state.sceneBindings.find(binding=>binding.sceneId===scene.id&&binding.sceneFile===item.name)||null,isAnchor:scene.anchorFrame===`reference/${item.name}`})) : [],
+    references:[...media.images,...media.documents],
+    referenceImages:media.images,
+    referenceFilms:media.films,
+    referenceDocuments:media.documents,
     work: scene ? listAssets(sceneWorkDir(scene), "work").map(item => ({...item, privateOnly:Boolean(state.privateAssets[`${scene.id}:work:${item.name}`]),rating:state.takeRatings[`${scene.id}:work:${item.name}`]||"none",isAnchor:scene.anchorFrame===`work/${item.name}`})) : [],
     final: scene ? listAssets(sceneFinalDir(scene), "final").map(item => ({...item, privateOnly:Boolean(state.privateAssets[`${scene.id}:final:${item.name}`]),rating:state.takeRatings[`${scene.id}:final:${item.name}`]||"none",isAnchor:scene.anchorFrame===`final/${item.name}`})) : [],
     editorName: state.editorName || "Allan",
@@ -227,6 +243,16 @@ async function importContinuityFiles(category) {
   }
   if(scene && ["scene","background"].includes(category)) { saveState(state); persistProductionBible(state); }
   return continuitySnapshot();
+}
+
+async function importSceneReferenceMedia(kind) {
+  const state=loadState(),scene=activeScene(state);if(!scene)throw new Error("Opret eller vælg først en scene.");
+  const isFilm=kind==="film",destinationDirectory=isFilm?sceneRefFilmsDir(scene):sceneRefImagesDir(scene);
+  const result=await dialog.showOpenDialog(mainWindow,{title:isFilm?"Upload referencefilm til aktiv scene":"Upload referencebilleder til aktiv scene",properties:["openFile","multiSelections"],filters:[isFilm?{name:"Referencefilm",extensions:["mp4","mov","m4v","mkv","webm"]}:{name:"Referencebilleder",extensions:["jpg","jpeg","png","webp","tif","tiff"]}]});
+  if(result.canceled)return continuitySnapshot();
+  fs.mkdirSync(destinationDirectory,{recursive:true});
+  for(const source of result.filePaths){const destination=uniqueDestination(destinationDirectory,path.basename(source));fs.copyFileSync(source,destination);state.sceneBindings.push({id:`${Date.now()}-${Math.random().toString(36).slice(2,7)}`,sceneId:scene.id,type:isFilm?"reference-film":"reference-image",sourceName:path.basename(source),sceneFile:path.basename(destination),locked:true,createdAt:new Date().toISOString()});}
+  saveState(state);persistProductionBible(state);return continuitySnapshot();
 }
 
 function elementPathFromId(id) {
@@ -389,9 +415,9 @@ function setTakeRating({category,filename,rating}={}) {
 
 function setSceneAnchor({category,filename}={}) {
   const state=loadState(),scene=activeScene(state);if(!scene)throw new Error("Vælg først en scene.");
-  if(!["reference","work","final"].includes(category))throw new Error("Ugyldig anchor-kilde.");
+  if(!["reference","image","work","final"].includes(category))throw new Error("Ugyldig anchor-kilde.");
   const safeName=path.basename(String(filename||""));
-  const directory=category==="reference"?sceneRefsDir(scene):category==="work"?sceneWorkDir(scene):sceneFinalDir(scene);
+  const directory=category==="reference"?sceneRefsDir(scene):category==="image"?sceneRefImagesDir(scene):category==="work"?sceneWorkDir(scene):sceneFinalDir(scene);
   if(!safeName||!fs.existsSync(path.join(directory,safeName)))throw new Error("Anchor-filen kunne ikke findes.");
   scene.anchorFrame=`${category}/${safeName}`;saveState(state);persistProductionBible(state);return continuitySnapshot();
 }
@@ -446,9 +472,9 @@ function openEditorDeliveryFolder() {
 function activeSceneReferencePaths(state) {
   const scene = activeScene(state);
   if (!scene || !fs.existsSync(sceneRefsDir(scene))) return [];
-  return fs.readdirSync(sceneRefsDir(scene))
-    .filter(name => /\.(jpe?g|png|webp)$/i.test(name))
-    .map(name => path.join(sceneRefsDir(scene), name));
+  return [sceneRefsDir(scene),sceneRefImagesDir(scene)].flatMap(directory=>fs.readdirSync(directory,{withFileTypes:true})
+    .filter(entry => entry.isFile() && /\.(jpe?g|png|webp)$/i.test(entry.name))
+    .map(entry => path.join(directory, entry.name)));
 }
 
 function sourceFolder(sourceType) {
@@ -691,7 +717,8 @@ async function runAssistant(userText, selectedEngine = "auto") {
   if (!apiKey) throw new Error("Tilføj først din OpenAI API-nøgle under Indstillinger.");
   const client = new OpenAI({apiKey});
   const scene = activeScene(state);
-  const sceneReferences = scene ? listAssets(sceneRefsDir(scene), "reference").map(item => item.name).join(", ") : "";
+  const sceneMedia=scene?listReferenceMedia(scene,state):{images:[],films:[],documents:[]};
+  const sceneReferences = [...sceneMedia.images,...sceneMedia.films,...sceneMedia.documents].map(item=>`${item.kind}: ${item.name}`).join(", ");
   const sceneBindings = scene ? state.sceneBindings.filter(item=>item.sceneId===scene.id).map(item=>`${item.type}: ${item.sceneFile}${item.locked?" (låst)":""}`).join(", ") : "";
   const externalKnowledge = state.aiKnowledge.map(item => `[${item.source.toUpperCase()} · ${item.name}]\n${item.summary || ""}`).join("\n\n").slice(-80000);
   const imported = [
@@ -875,6 +902,7 @@ app.whenReady().then(() => {
     return continuitySnapshot();
   });
   ipcMain.handle("continuity:import", (_e, category) => importContinuityFiles(category));
+  ipcMain.handle("scene:import-reference-media", (_e, kind) => importSceneReferenceMedia(kind));
   ipcMain.handle("scene:add-elements", (_e, ids) => addElementsToScene(ids));
   ipcMain.handle("scene:move-final", (_e, filename) => moveWorkToFinal(filename));
   ipcMain.handle("scene:set-private", (_e, value) => setScenePrivate(value));

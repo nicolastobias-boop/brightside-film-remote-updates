@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld("brightside", {
   createScene: payload => ipcRenderer.invoke("scene:create", payload),
   activateScene: id => ipcRenderer.invoke("scene:activate", id),
   importContinuity: category => ipcRenderer.invoke("continuity:import", category),
+  importSceneReferenceMedia: kind => ipcRenderer.invoke("scene:import-reference-media", kind),
   addElementsToScene: ids => ipcRenderer.invoke("scene:add-elements", ids),
   moveWorkToFinal: filename => ipcRenderer.invoke("scene:move-final", filename),
   setScenePrivate: value => ipcRenderer.invoke("scene:set-private", value),

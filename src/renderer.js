@@ -143,7 +143,7 @@ function assetCard(asset, selectable=false) {
   if(selectable){const check=document.createElement("input");check.type="checkbox";check.name="continuityAsset";check.value=asset.id;footer.appendChild(check);}
   const name=document.createElement("span");name.textContent=asset.name;name.title=asset.name;footer.appendChild(name);card.appendChild(footer);
   if(asset.binding){const tag=document.createElement("span");tag.className=`bindingTag ${asset.binding.type}`;tag.textContent=asset.binding.type==="character"?"LÅST KARAKTER":asset.binding.type==="location"?"LÅST LOCATION":asset.binding.type==="background"?"BAGGRUNDSLAG":"REFERENCE";card.appendChild(tag);}
-  if(asset.category==="reference"){const anchor=document.createElement("button");anchor.className="assetAnchor";anchor.textContent=asset.isAnchor?"★ Anchor":"☆ Sæt anchor";anchor.onclick=async()=>{renderContinuity(await window.brightside.setSceneAnchor({category:"reference",filename:asset.name}));await refreshBible();};card.appendChild(anchor);}
+  if(asset.category==="reference"||asset.category==="reference-image"){const anchor=document.createElement("button");anchor.className="assetAnchor";anchor.textContent=asset.isAnchor?"★ Anchor":"☆ Sæt anchor";anchor.onclick=async()=>{renderContinuity(await window.brightside.setSceneAnchor({category:asset.kind==="image"?"image":"reference",filename:asset.name}));await refreshBible();};card.appendChild(anchor);}
   return card;
 }
 
@@ -177,10 +177,18 @@ function renderContinuity(data) {
   $("#activeScenePath").textContent=active ? `KESSLER/Scener/${active.folder}/Referencer · Work · Final` : "Opret eller vælg en scene.";
   $("#openSceneFolderBtn").disabled=!active;
   $("#importSceneRefsBtn").disabled=!active;
+  $("#importBackgroundBtn").disabled=!active;
+  $("#sceneUploadImagesBtn").disabled=!active;
+  $("#sceneUploadFilmsBtn").disabled=!active;
+  $("#uploadReferenceImagesBtn").disabled=!active;
+  $("#uploadReferenceFilmsBtn").disabled=!active;
+  $("#referenceUploadStatus").textContent=active?`Aktiv scene: ${active.title} · uploads gemmes automatisk i dens Referencer-mappe.`:"Vælg først eller opret en scene under “Scener”.";
   $("#addElementsBtn").disabled=!active;
   renderAssetGrid("#characterAssets",data.characters||[],true);
   renderAssetGrid("#locationAssets",data.locations||[],true);
-  renderAssetGrid("#sceneReferences",data.references||[],false);
+  renderAssetGrid("#sceneReferenceImages",data.referenceImages||[],false);
+  renderFileStack("#sceneReferenceFilms",data.referenceFilms||[],"plain");
+  renderAssetGrid("#sceneReferences",data.referenceDocuments||[],false);
   renderFileStack("#sceneWork",data.work||[],"work");
   renderFileStack("#sceneFinal",data.final||[],"final");
   const isAdmin=data.currentUserRole==="admin";$("#scenePrivate").disabled=!active||!isAdmin;$("#scenePrivate").checked=Boolean(active?.privateOnly);$("#privacyStatus").textContent=active?.privateOnly?"Kun hos Nicolas · markeres privat":"Lokal Nicolas-scene";
@@ -200,6 +208,15 @@ $("#importCharactersBtn").onclick=async()=>renderContinuity(await window.brights
 $("#importLocationsBtn").onclick=async()=>renderContinuity(await window.brightside.importContinuity("location"));
 $("#importSceneRefsBtn").onclick=async()=>renderContinuity(await window.brightside.importContinuity("scene"));
 $("#importBackgroundBtn").onclick=async()=>{renderContinuity(await window.brightside.importContinuity("background"));await refreshBible();};
+async function uploadSceneReference(kind){
+  const label=kind==="film"?"referencefilm":"referencebilleder";$("#referenceUploadStatus").textContent=`Vælg ${label}…`;
+  try{renderContinuity(await window.brightside.importSceneReferenceMedia(kind));await refreshBible();$("#referenceUploadStatus").textContent=`${label[0].toUpperCase()+label.slice(1)} er uploadet og låst til den aktive scene.`;}
+  catch(error){$("#referenceUploadStatus").textContent=`Upload fejlede: ${error.message}`;}
+}
+$("#uploadReferenceImagesBtn").onclick=()=>uploadSceneReference("image");
+$("#uploadReferenceFilmsBtn").onclick=()=>uploadSceneReference("film");
+$("#sceneUploadImagesBtn").onclick=()=>uploadSceneReference("image");
+$("#sceneUploadFilmsBtn").onclick=()=>uploadSceneReference("film");
 $("#addElementsBtn").onclick=async()=>{
   const ids=[...document.querySelectorAll('input[name="continuityAsset"]:checked')].map(input=>input.value);
   if(!ids.length){$("#activeScenePath").textContent="Vælg mindst én karakter eller location.";return;}

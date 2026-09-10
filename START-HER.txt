@@ -1,4 +1,4 @@
-BRIGHTSIDE FILM REMOTE 0.7.0 — PERSONLIG NICOLAS/ADMIN
+BRIGHTSIDE FILM REMOTE 0.7.1 — PERSONLIG NICOLAS/ADMIN
 
 1. Pak ZIP-filen ud på din Mac.
 2. Dobbeltklik på "Installer-Brightside-Film-Remote.command".

@@ -1,8 +1,10 @@
-# Brightside Film Remote — version 0.7.0
+# Brightside Film Remote — version 0.7.1
 
 En lokal Apple Silicon Mac-app med synlig Higgsfield-browser, dansk chat og stemmestyring, filmspecialiseret promptarbejde, Kessler-projektprofil og godkendelse før credit-forbrug.
 
-Version 0.7.0 er den personlige Nicolas/Admin-udgave. Flerbruger, fælles login og Supabase er bevidst taget ud af brugerfladen, så den lokale filmproduktion er enkel og robust først.
+Version 0.7.1 er den personlige Nicolas/Admin-udgave. Flerbruger, fælles login og Supabase er bevidst taget ud af brugerfladen, så den lokale filmproduktion er enkel og robust først.
+
+Referencefilm og referencebilleder kan uploades fra store, tydelige knapper i Assistent og Scener. De gemmes automatisk i den aktive scenes separate `Referencer/Billeder`- og `Referencer/Film`-mapper og registreres i Production Bible.
 
 ## Production Bible
 

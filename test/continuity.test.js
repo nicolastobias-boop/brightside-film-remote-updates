@@ -20,3 +20,10 @@ test("continuity library includes characters and locations", () => {
   assert.match(source, /"Karakterer"/);
   assert.match(source, /"Locations"/);
 });
+
+test("active scenes accept separate reference images and films", () => {
+  assert.match(source, /sceneRefImagesDir/);
+  assert.match(source, /sceneRefFilmsDir/);
+  assert.match(source, /"mp4","mov","m4v","mkv","webm"/);
+  assert.match(source, /scene:import-reference-media/);
+});

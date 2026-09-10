@@ -20,6 +20,7 @@
     <nav class="tabs"><button data-tab="chat" class="active">Assistent</button><button data-tab="bible">Project Bible</button><button data-tab="continuity">Scener</button><button data-tab="production">Arbejdsplan</button><button data-tab="workflows">Engine Center</button><button data-tab="imageLab">Billedmager</button><button data-tab="identity">Identitet</button></nav>
     <main id="chat" class="panel active">
       <section class="projectCard"><div><span class="eyebrow">AKTIV PROFIL</span><h1>KESSLER</h1><p>Film · prompts · continuity · 25 fps</p></div><span class="status">LÅST KERNE</span></section>
+      <section class="referenceUploadHero"><div><span class="eyebrow">REFERENCEINPUT TIL AKTIV SCENE</span><h3>Upload før du prompter</h3><p>Billeder låser identitet og look. Film låser bevægelse, blocking og kameraføring.</p></div><div class="referenceUploadActions"><button id="uploadReferenceImagesBtn" type="button" class="uploadReference image">＋ Upload referencebilleder</button><button id="uploadReferenceFilmsBtn" type="button" class="uploadReference film">＋ Upload referencefilm</button></div><p id="referenceUploadStatus" class="hint">Vælg først eller opret en scene under “Scener”.</p></section>
       <section id="messages" class="messages">
         <article class="message assistant"><div class="avatar">B</div><div><p>Jeg kender Kesslers visuelle verden og karakterkontinuitet. Fortæl mig, hvilket shot vi skal skabe eller ændre i Higgsfield.</p><div class="chips"><button>Lav en filmisk prompt</button><button>Analysér det åbne shot</button><button>Lav 3 kontrollerede variationer</button></div></div></article>
       </section>
@@ -74,8 +75,11 @@
         <button id="addElementsBtn" class="wideAction">Tilføj valgte elementer til aktiv scene</button>
       </section>
       <section class="identityBlock">
-        <div class="row"><div><h3>Scenens låste referencepakke</h3><p class="hint">Karakterer, locations og baggrundslag bindes til den virkelige scene.</p></div><div class="row"><button id="importBackgroundBtn" class="small">+ Baggrundslag</button><button id="importSceneRefsBtn" class="small">+ Reference</button></div></div>
-        <div id="sceneReferences" class="assetGrid compact"></div>
+        <div><h3>Scenens låste referencepakke</h3><p class="hint">Karakterer, locations, referencefilm og baggrundslag bindes til den virkelige scene.</p></div>
+        <div class="sceneUploadBar"><button id="sceneUploadImagesBtn" class="uploadReference image">＋ Referencebilleder</button><button id="sceneUploadFilmsBtn" class="uploadReference film">＋ Referencefilm</button><button id="importBackgroundBtn" class="small">＋ Baggrundslag</button><button id="importSceneRefsBtn" class="small">＋ Dokument/noter</button></div>
+        <h4>Referencebilleder</h4><div id="sceneReferenceImages" class="assetGrid compact"></div>
+        <h4>Referencefilm</h4><div id="sceneReferenceFilms" class="fileStack"></div>
+        <div id="sceneReferences" class="assetGrid compact legacyReferences"></div>
       </section>
       <section class="identityBlock">
         <h3>Work</h3><p class="hint">Prompts, keyframes og Higgsfield-downloads lander automatisk her.</p>
