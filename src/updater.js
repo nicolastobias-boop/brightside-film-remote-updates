@@ -130,8 +130,8 @@ function setupUpdater({ getSettings, notify }) {
   const check = async (manual = false) => {
     const settings = getSettings();
     if (!app.isPackaged) return notify("Auto-update testes først i den pakkede app");
-    if (!settings.autoUpdate) return notify("Automatiske opdateringer er slået fra");
-    if (checking) return notify("Der søges allerede efter en opdatering");
+    if (!settings.autoUpdate && !manual) return;
+    if (checking) return notify("Der søges allerede efter en opdatering…");
 
     checking = true;
     if (manual) notify("Søger efter ny version…");

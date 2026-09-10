@@ -101,8 +101,10 @@ $("#checkUpdateBtn").onclick=()=>window.brightside.checkForUpdates();
 window.brightside.onUpdateStatus(message=>{
   $("#updateStatus").textContent=message;
   const button=$("#topUpdateBtn");
-  button.textContent=/henter|søger/i.test(message) ? message : "↓ Hent og installer opdatering";
-  button.disabled=/henter|søger/i.test(message);
+  const busy=/henter|søger/i.test(message);
+  button.textContent=busy ? message : `↓ ${message}`;
+  button.disabled=busy;
+  if(!busy)setTimeout(()=>{button.textContent="↓ Hent og installer opdatering";button.disabled=false;},6500);
 });
 $("#importBtn").onclick=async()=>renderImports(await window.brightside.importProjectFiles());
 $("#openProjectFolderBtn").onclick=()=>window.brightside.openProjectFolder();
