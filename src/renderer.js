@@ -108,10 +108,45 @@ function renderBible(data){
 }
 async function refreshBible(){renderBible(await window.brightside.getProductionBible());}
 
+let projectSetup={ready:false};
+function renderProjectSetup(data){
+  projectSetup=data;
+  $("#projectFolderPath").textContent=data.path;
+  $("#projectSetupStatus").textContent=data.ready?"✓ Projektmappen er klar. Opret eller vælg nu din scene nedenfor.":"Du skal først oprette en mappe til projektet. Jeg gør den klar med ét klik.";
+  $("#setupProjectBtn").hidden=data.ready;
+  $("#showProjectFolderBtn").hidden=!data.ready;
+}
+function requireProjectSetup(){
+  if(projectSetup.ready)return true;
+  switchTab("chat");
+  $("#projectSetupStatus").textContent="Du skal først oprette en mappe til projektet. Klik på ‘Opret projektmappe’ her.";
+  $("#setupProjectBtn").scrollIntoView({block:"center",behavior:"smooth"});$("#setupProjectBtn").focus();return false;
+}
+function requireSceneForReferences(){
+  if(!requireProjectSetup())return false;
+  if(continuityState?.activeSceneId)return true;
+  switchTab("chat");
+  $("#assistantSceneStatus").textContent="Hvis du vil uploade referencer, skal du først oprette eller vælge en scene. Skriv scenens navn her og klik ‘Opret scene’.";
+  $("#assistantSceneName").scrollIntoView({block:"center",behavior:"smooth"});$("#assistantSceneName").focus();return false;
+}
+$("#setupProjectBtn").onclick=async()=>{
+  const button=$("#setupProjectBtn");button.disabled=true;
+  try{renderProjectSetup(await window.brightside.setupProject());$("#assistantSceneName").focus();}
+  catch(error){$("#projectSetupStatus").textContent=`Mappen kunne ikke oprettes: ${error.message}. Prøv igen.`;}
+  finally{button.disabled=false;}
+};
+$("#showProjectFolderBtn").onclick=()=>window.brightside.openProjectFolder();
+
 async function initialize() {
   appState = await window.brightside.getState();
+  renderProjectSetup(await window.brightside.getProjectSetup());
   renderWorkspace(await window.brightside.getWorkspace());
   if(!appState.onboardingCompleted || !appState.workspaceConfigured) $("#onboardingDialog").showModal();
+  $("#claudeWorkspaceId").value=appState.claudeWorkspaceId||"";
+  $("#claudeModel").value=appState.claudeModel||"claude-opus-5";
+  $("#claudeEnabled").checked=Boolean(appState.claudeEnabled);
+  $("#claudeStatus").textContent=appState.hasClaudeKey?"Nøgle gemt. Test forbindelsen for at bekræfte adgang.":"Indsæt din Claude API-nøgle her, og test forbindelsen.";
+  $("#partnerStatus").textContent=appState.claudeEnabled?`${appState.model} + Claude · parløb slået til`:`${appState.model} · Claude kan tilsluttes i Indstillinger`;
   $("#model").value = appState.model || "gpt-5.6-terra";
   $("#autoUpdate").checked = appState.autoUpdate !== false;
   renderImports(appState.imports || []);
@@ -130,15 +165,29 @@ document.querySelectorAll("[data-tab]").forEach(btn => btn.addEventListener("cli
 document.querySelectorAll(".chips button").forEach(btn => btn.onclick = () => { $("#prompt").value = btn.textContent; $("#prompt").focus(); });
 
 $("#composer").addEventListener("submit", async event => {
-  event.preventDefault(); const text=$("#prompt").value.trim(); if(!text)return; $("#prompt").value=""; addMessage("user",text); $("#sendBtn").disabled=true;
-  addMessage("assistant","Arbejder i Higgsfield…"); const placeholder=messages.lastElementChild;
+  event.preventDefault(); if(!requireProjectSetup())return; const text=$("#prompt").value.trim(); if(!text)return; $("#prompt").value=""; addMessage("user",text); $("#sendBtn").disabled=true;
+  addMessage("assistant",appState.claudeEnabled?"Astra og Claude forbereder dit shot…":"Arbejder i Higgsfield…"); const placeholder=messages.lastElementChild;
   try { const answer=await window.brightside.runAssistant(text,$("#engineMode").value); placeholder.querySelector("p").textContent=answer; }
   catch(error){ placeholder.querySelector("p").textContent=`Jeg kunne ikke fortsætte: ${error.message}`; }
   finally{$("#sendBtn").disabled=false;}
 });
 
 $("#settingsBtn").onclick=()=>$("#settingsDialog").showModal();
-$("#saveSettings").onclick=async event=>{event.preventDefault();await window.brightside.saveSettings({apiKey:$("#apiKey").value.trim(),model:$("#model").value.trim(),autoUpdate:$("#autoUpdate").checked});$("#apiKey").value="";$("#settingsDialog").close();};
+$("#saveSettings").onclick=async event=>{
+  event.preventDefault();
+  try{
+    await window.brightside.saveSettings({apiKey:$("#apiKey").value.trim(),model:$("#model").value.trim(),autoUpdate:$("#autoUpdate").checked,claudeApiKey:$("#claudeApiKey").value.trim(),claudeModel:$("#claudeModel").value.trim(),claudeWorkspaceId:$("#claudeWorkspaceId").value.trim(),claudeEnabled:$("#claudeEnabled").checked});
+    $("#apiKey").value="";$("#claudeApiKey").value="";$("#settingsSaveStatus").textContent="";await initialize();$("#settingsDialog").close();
+  }catch(error){$("#settingsSaveStatus").textContent=error.message;}
+};
+$("#testClaudeBtn").onclick=async()=>{
+  const button=$("#testClaudeBtn");button.disabled=true;$("#claudeStatus").textContent="Tester adgang…";
+  try{const result=await window.brightside.testClaude({apiKey:$("#claudeApiKey").value.trim(),model:$("#claudeModel").value.trim(),workspaceId:$("#claudeWorkspaceId").value.trim()});$("#claudeStatus").textContent=`Forbindelse OK: ${result.model}. Slå parløb til og klik Gem.`;}
+  catch(error){$("#claudeStatus").textContent=error.message;}
+  finally{button.disabled=false;}
+};
+window.brightside.onAssistantProgress(message=>{$("#partnerStatus").textContent=message;});
+
 $("#checkUpdateBtn").onclick=()=>window.brightside.checkForUpdates();
 window.brightside.onUpdateStatus(message=>{
   $("#updateStatus").textContent=message;
@@ -218,15 +267,20 @@ function renderContinuity(data) {
   const empty=document.createElement("option");empty.value="";empty.textContent=data.scenes.length ? "Vælg scene…" : "Ingen scene endnu";select.appendChild(empty);
   data.scenes.forEach(scene=>{const option=document.createElement("option");option.value=scene.id;option.textContent=scene.title;option.selected=scene.id===data.activeSceneId;select.appendChild(option);});
   const active=data.scenes.find(scene=>scene.id===data.activeSceneId);
+  const assistantSelect=$("#assistantSceneSelect");
+  assistantSelect.replaceChildren(...Array.from(select.options,option=>option.cloneNode(true)));
+  assistantSelect.value=active?.id||"";
+  $("#assistantSceneStatus").textContent=active?`Valgt: ${active.title}. Fortsæt med referencer eller skriv dit shot.`:"Start her: vælg en scene eller giv din nye scene et navn.";
+
   $("#activeScenePath").textContent=active ? `KESSLER/03-SCENER/${active.folder}/01-REFERENCER · 02-WORK · 03-FINAL` : "Opret eller vælg en scene.";
   $("#openSceneFolderBtn").disabled=!active;
   $("#importSceneRefsBtn").disabled=!active;
   $("#importBackgroundBtn").disabled=!active;
   $("#sceneUploadImagesBtn").disabled=!active;
   $("#sceneUploadFilmsBtn").disabled=!active;
-  $("#uploadReferenceImagesBtn").disabled=!active;
-  $("#uploadReferenceFilmsBtn").disabled=!active;
-  $("#referenceUploadStatus").textContent=active?`Aktiv scene: ${active.title} · uploads gemmes automatisk i dens Referencer-mappe.`:"Vælg først eller opret en scene under “Scener”.";
+  $("#uploadReferenceImagesBtn").disabled=false;
+  $("#uploadReferenceFilmsBtn").disabled=false;
+  $("#referenceUploadStatus").textContent=active?`Aktiv scene: ${active.title} · uploads gemmes automatisk i dens Referencer-mappe.`:"Klik på Billeder eller Film — jeg hjælper dig med at gøre scenen klar først.";
   $("#addElementsBtn").disabled=!active;
   renderAssetGrid("#characterAssets",data.characters||[],true);
   renderAssetGrid("#locationAssets",data.locations||[],true);
@@ -242,10 +296,32 @@ function renderContinuity(data) {
 
 async function refreshContinuity(){renderContinuity(await window.brightside.getContinuity());}
 
+
+$("#assistantSceneForm").addEventListener("submit",async event=>{
+  event.preventDefault();
+  if(!requireProjectSetup())return;
+  const input=$("#assistantSceneName"), title=input.value.trim(), button=$("#assistantCreateSceneBtn");
+  if(!title){input.focus();return;}
+  button.disabled=true;
+  try{
+    renderContinuity(await window.brightside.createScene({title,...manusSelections.assistantSceneName,privateOnly:$("#assistantScenePrivate").checked}));
+    input.value="";$("#assistantScenePrivate").checked=false;
+    await refreshBible();
+  }catch(error){$("#assistantSceneStatus").textContent=`Scenen kunne ikke oprettes: ${error.message}`;}
+  finally{button.disabled=false;}
+});
+$("#assistantSceneSelect").onchange=async event=>{
+  if(!requireProjectSetup()||!event.target.value)return;
+  try{renderContinuity(await window.brightside.activateScene(event.target.value));await refreshBible();}
+  catch(error){$("#assistantSceneStatus").textContent=`Scenen kunne ikke vælges: ${error.message}`;}
+};
+$("#focusShotBtn").onclick=()=>$("#prompt").focus();
+
 $("#newSceneForm").addEventListener("submit",async event=>{
   event.preventDefault();
+  if(!requireProjectSetup())return;
   const input=$("#newSceneName"); const title=input.value.trim(); if(!title)return;
-  renderContinuity(await window.brightside.createScene({title,privateOnly:$("#newScenePrivate").checked}));await refreshBible();input.value="";$("#newScenePrivate").checked=false;
+  renderContinuity(await window.brightside.createScene({title,...manusSelections.newSceneName,privateOnly:$("#newScenePrivate").checked}));await refreshBible();input.value="";$("#newScenePrivate").checked=false;
 });
 $("#sceneSelect").onchange=async event=>{if(event.target.value){renderContinuity(await window.brightside.activateScene(event.target.value));await refreshBible();}};
 $("#importCharactersBtn").onclick=async()=>renderContinuity(await window.brightside.importContinuity("character"));
@@ -253,8 +329,9 @@ $("#importLocationsBtn").onclick=async()=>renderContinuity(await window.brightsi
 $("#importSceneRefsBtn").onclick=async()=>renderContinuity(await window.brightside.importContinuity("scene"));
 $("#importBackgroundBtn").onclick=async()=>{renderContinuity(await window.brightside.importContinuity("background"));await refreshBible();};
 async function uploadSceneReference(kind){
+  if(!requireSceneForReferences())return;
   const label=kind==="film"?"referencefilm":"referencebilleder";$("#referenceUploadStatus").textContent=`Vælg ${label}…`;
-  try{renderContinuity(await window.brightside.importSceneReferenceMedia(kind));await refreshBible();$("#referenceUploadStatus").textContent=`${label[0].toUpperCase()+label.slice(1)} er uploadet og låst til den aktive scene.`;}
+  try{renderContinuity(await window.brightside.importSceneReferenceMedia(kind));await refreshBible();}
   catch(error){$("#referenceUploadStatus").textContent=`Upload fejlede: ${error.message}`;}
 }
 $("#uploadReferenceImagesBtn").onclick=()=>uploadSceneReference("image");
@@ -334,3 +411,61 @@ $("#openPlanFolderBtn").onclick=()=>window.brightside.openProductionFolder();
 $("#copyTerminalBtn").onclick=async()=>{const command=`xattr -dr com.apple.quarantine "/Applications/Brightside Film Remote.app"`;await navigator.clipboard.writeText(command);$("#copyTerminalBtn").textContent="Kopieret";};
 setTimeout(()=>{$("#brandSplash")?.classList.add("done");setTimeout(()=>$("#brandSplash")?.remove(),650);},2500);
 initialize();
+
+let manusLoaded=false;
+async function loadManus(){
+  if(manusLoaded)return;
+  try{const data=await window.brightside.getManus();$("#manusText").value=data.text;$("#manusStatus").textContent=`Gemmes i: ${data.path}`;manusLoaded=true;}
+  catch(error){$("#manusStatus").textContent=error.message;}
+}
+$("[data-tab='bible']").addEventListener("click",loadManus);
+$("#manusText").addEventListener("input",()=>{$("#manusStatus").textContent="Du har ændringer, der ikke er gemt.";});
+$("#importManusBtn").onclick=async()=>{
+  if(!requireProjectSetup())return;
+  try{const data=await window.brightside.importManus();if(!data)return;$("#manusText").value=data.text;manusLoaded=true;$("#manusStatus").textContent=`${data.name} er indlæst til redigering. Klik Gem manus for at gemme det som projektets manus.`;}
+  catch(error){$("#manusStatus").textContent=error.message;}
+};
+$("#saveManusBtn").onclick=async()=>{
+  if(!requireProjectSetup())return;
+  try{const data=await window.brightside.saveManus($("#manusText").value);manusLoaded=true;$("#manusStatus").textContent=`Manus gemt lokalt: ${data.path}`;await refreshProjectAnalysis();}
+  catch(error){$("#manusStatus").textContent=error.message;}
+};
+
+function renderProjectAnalysis(snapshot){
+  $("#analysisReport").textContent=snapshot.data?.report||"Ingen analyse endnu. Gem manus og klik Analysér hele projektet.";
+  $("#analysisStatus").textContent=snapshot.busy?"Projektanalysen arbejder…":snapshot.data?(snapshot.stale?"Manus eller Bible er ændret. Opdatér analysen, så karakterviden følger med.":`Analyse gemt · ${snapshot.data.chunks} manusdele · ${new Date(snapshot.data.createdAt).toLocaleString("da-DK")}. Bruges af assistenten og Billedmager.`):"Klar, når dit manus er gemt.";
+  $("#analyzeProjectBtn").disabled=snapshot.busy;
+  $("#analyzeProjectBtn").textContent=snapshot.data?"Opdatér projektanalysen":"Analysér hele projektet";
+}
+async function refreshProjectAnalysis(){try{renderProjectAnalysis(await window.brightside.getProjectAnalysis());}catch(error){$("#analysisStatus").textContent=error.message;}}
+$("[data-tab='bible']").addEventListener("click",refreshProjectAnalysis);
+document.querySelectorAll(".showProjectAnalysis").forEach(button=>button.onclick=async()=>{switchTab("bible");await loadManus();await refreshProjectAnalysis();$("#analysisReport").parentElement.open=true;$("#analysisStatus").scrollIntoView({block:"center"});});
+window.brightside.onAnalysisProgress(message=>{$("#analysisStatus").textContent=message;});
+$("#analyzeProjectBtn").onclick=async()=>{
+  if(!requireProjectSetup())return;
+  const button=$("#analyzeProjectBtn");button.disabled=true;
+  try{
+    await window.brightside.saveManus($("#manusText").value);
+    $("#manusStatus").textContent="Manus er gemt. Projektanalysen starter…";
+    $("#analysisStatus").textContent="Starter gennemgang af hele manus…";
+    renderProjectAnalysis(await window.brightside.runProjectAnalysis());
+    $("#analysisReport").parentElement.open=true;
+  }catch(error){$("#analysisStatus").textContent=error.message;}finally{button.disabled=false;}
+};
+
+const manusSelections={};
+for(const id of ["assistantSceneName","newSceneName"]){
+ const input=$("#"+id),box=document.createElement("div"),search=document.createElement("input"),results=document.createElement("div"),label=document.createElement("label");
+ search.type="search";search.id=id+"ManusSearch";search.placeholder="Fx: Redmun og Mikkel på hotellet";label.htmlFor=search.id;label.textContent="Find scenen i manus (valgfrit)";
+ const hint=document.createElement("p");hint.className="hint";hint.textContent="Beskriv scenen med dine egne ord, eller søg på nummer. Jeg søger også i dialog og handling og tåler små stavefejl. Vælg et forslag, eller skriv selv et navn.";
+ box.append(label,search,results,hint);input.closest("form").prepend(box);
+ let revision=0,timer;
+ search.oninput=()=>{clearTimeout(timer);const request=++revision;timer=setTimeout(async()=>{
+ try{const data=await window.brightside.searchManusScenes(search.value);if(request!==revision)return;results.textContent="";
+ if(!data.items.length&&search.value.trim())results.textContent="Ingen match. Prøv en location, eller skriv selv et navn nedenfor.";
+ data.items.forEach(item=>{const button=document.createElement("button");button.type="button";button.className="manusMatch";button.textContent=`${item.number?"Scene "+item.number+" · ":""}${item.heading}${item.inferred?" (nummer aflæst fra PDF)":""}`;button.title=item.preview;const excerpt=document.createElement("p");excerpt.className="hint";excerpt.textContent=(item.matches?.length?"Matcher: "+item.matches.join(", ")+" · ":"")+item.preview;button.onclick=()=>{input.value=`${item.number?"SC"+item.number+" · ":""}${item.heading}`;manusSelections[id]={manusSceneId:item.id,manusHash:data.hash};results.textContent="Valgt: "+button.textContent+". Manusuddraget følger med ved oprettelse.";input.focus();};results.append(button,excerpt);});
+ }catch(error){if(request===revision)results.textContent=error.message;}
+ },180);};
+ input.addEventListener("input",()=>{delete manusSelections[id];});
+ input.closest("form").addEventListener("submit",()=>{setTimeout(()=>{if(!input.value){delete manusSelections[id];results.textContent="";search.value="";}},1000);});
+}

@@ -1,6 +1,10 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("brightside", {
+  getProjectSetup: () => ipcRenderer.invoke("project:setup-status"),
+  setupProject: () => ipcRenderer.invoke("project:setup"),
+  testClaude: payload => ipcRenderer.invoke("claude:test",payload),
+  onAssistantProgress: callback => ipcRenderer.on("assistant:progress",(_event,message)=>callback(message)),
   getState: () => ipcRenderer.invoke("state:get"),
   saveSettings: settings => ipcRenderer.invoke("settings:save", settings),
   completeOnboarding: name => ipcRenderer.invoke("onboarding:complete", name),
@@ -16,6 +20,13 @@ contextBridge.exposeInMainWorld("brightside", {
   updateProductionItem: payload => ipcRenderer.invoke("production:update", payload),
   removeProductionItem: id => ipcRenderer.invoke("production:remove", id),
   openProductionFolder: () => ipcRenderer.invoke("production:open-folder"),
+  getProjectAnalysis: () => ipcRenderer.invoke("analysis:get"),
+  runProjectAnalysis: () => ipcRenderer.invoke("analysis:run"),
+  onAnalysisProgress: callback => ipcRenderer.on("analysis:progress", (_e,message) => callback(message)),
+  searchManusScenes: query => ipcRenderer.invoke("manus:search-scenes",query),
+  getManus: () => ipcRenderer.invoke("manus:get"),
+  saveManus: text => ipcRenderer.invoke("manus:save", text),
+  importManus: () => ipcRenderer.invoke("manus:import"),
   getProductionBible: () => ipcRenderer.invoke("bible:get"),
   updateProductionBible: payload => ipcRenderer.invoke("bible:update", payload),
   openProductionBibleFolder: () => ipcRenderer.invoke("bible:open-folder"),
