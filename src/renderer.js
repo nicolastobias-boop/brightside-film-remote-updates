@@ -22,6 +22,46 @@ function renderImports(items) {
   items.forEach(item => { const row=document.createElement("div"); row.className="importItem"; const name=document.createElement("span"); name.textContent=item.name; const remove=document.createElement("button"); remove.textContent="Fjern"; remove.onclick=async()=>renderImports(await window.brightside.removeProjectFile(item.id)); row.append(name,remove); root.appendChild(row); });
 }
 
+function renderWorkspace(data) {
+  if (!data) return;
+  appState = {...(appState || {}), workspaceRoot:data.workspaceRoot, workspaceConfigured:data.configured};
+  $("#onboardingWorkspacePath").textContent = data.configured ? data.projectRoot : "Ingen mappe valgt endnu";
+  $("#currentWorkspacePath").textContent = data.projectRoot;
+  $("#onboardingDoneBtn").disabled = !data.configured;
+}
+
+function renderScreenplays(items) {
+  const root = $("#screenplayList");
+  root.textContent = "";
+  if (!items.length) {
+    const empty = document.createElement("p");
+    empty.className = "hint";
+    empty.textContent = "Der er endnu ikke uploadet et manus.";
+    root.appendChild(empty);
+    return;
+  }
+  items.forEach(item => {
+    const row = document.createElement("div");
+    row.className = "screenplayItem";
+    const info = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = item.name;
+    const meta = document.createElement("span");
+    meta.textContent = (item.active ? "AKTIVT MANUS" : "ARKIVERET VERSION") + " · " + Math.max(1, Math.round(item.characters / 1000)) + "k tegn";
+    info.append(name, meta);
+    const remove = document.createElement("button");
+    remove.className = "small";
+    remove.textContent = "Fjern";
+    remove.onclick = async () => renderScreenplays(await window.brightside.removeScreenplay(item.id));
+    row.append(info, remove);
+    root.appendChild(row);
+  });
+}
+
+async function refreshScreenplays() {
+  renderScreenplays(await window.brightside.getScreenplays());
+}
+
 function switchTab(id) {
   document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x.dataset.tab===id));
   document.querySelectorAll(".panel").forEach(x=>x.classList.toggle("active",x.id===id));
@@ -70,7 +110,8 @@ async function refreshBible(){renderBible(await window.brightside.getProductionB
 
 async function initialize() {
   appState = await window.brightside.getState();
-  if(!appState.onboardingCompleted) $("#onboardingDialog").showModal();
+  renderWorkspace(await window.brightside.getWorkspace());
+  if(!appState.onboardingCompleted || !appState.workspaceConfigured) $("#onboardingDialog").showModal();
   $("#model").value = appState.model || "gpt-5.6-terra";
   $("#autoUpdate").checked = appState.autoUpdate !== false;
   renderImports(appState.imports || []);
@@ -79,6 +120,7 @@ async function initialize() {
   await refreshAiKnowledge();
   await refreshProduction();
   await refreshBible();
+  await refreshScreenplays();
 }
 
 document.querySelectorAll("[data-tab]").forEach(btn => btn.addEventListener("click", () => {
@@ -176,7 +218,7 @@ function renderContinuity(data) {
   const empty=document.createElement("option");empty.value="";empty.textContent=data.scenes.length ? "Vælg scene…" : "Ingen scene endnu";select.appendChild(empty);
   data.scenes.forEach(scene=>{const option=document.createElement("option");option.value=scene.id;option.textContent=scene.title;option.selected=scene.id===data.activeSceneId;select.appendChild(option);});
   const active=data.scenes.find(scene=>scene.id===data.activeSceneId);
-  $("#activeScenePath").textContent=active ? `KESSLER/Scener/${active.folder}/Referencer · Work · Final` : "Opret eller vælg en scene.";
+  $("#activeScenePath").textContent=active ? `KESSLER/03-SCENER/${active.folder}/01-REFERENCER · 02-WORK · 03-FINAL` : "Opret eller vælg en scene.";
   $("#openSceneFolderBtn").disabled=!active;
   $("#importSceneRefsBtn").disabled=!active;
   $("#importBackgroundBtn").disabled=!active;
@@ -270,7 +312,22 @@ $("#saveAiTextBtn").onclick=async()=>{
 };
 
 $("#onboardingLoginBtn").onclick=()=>window.brightside.navigate("https://higgsfield.ai");
-$("#onboardingDoneBtn").onclick=async()=>{await window.brightside.completeOnboarding("Nicolas");$("#onboardingDialog").close();};
+$("#chooseWorkspaceBtn").onclick=async()=>{
+  $("#workspaceStatus").textContent="Opretter og organiserer det lokale arkiv…";
+  try{const data=await window.brightside.chooseWorkspace();renderWorkspace(data);$("#workspaceStatus").textContent=data.ok?"Arbejdsområdet er klar. Alt gemmes lokalt her.":"Vælg en mappe for at fortsætte.";}
+  catch(error){$("#workspaceStatus").textContent="Kunne ikke bruge mappen: " + error.message;}
+};
+$("#changeWorkspaceBtn").onclick=async()=>{
+  try{const data=await window.brightside.chooseWorkspace();renderWorkspace(data);}
+  catch(error){$("#currentWorkspacePath").textContent="Kunne ikke skifte mappe: " + error.message;}
+};
+$("#onboardingDoneBtn").onclick=async()=>{try{await window.brightside.completeOnboarding("Nicolas");$("#onboardingDialog").close();}catch(error){$("#workspaceStatus").textContent=error.message;}};
+$("#importScreenplayBtn").onclick=async()=>{
+  $("#screenplayStatus").textContent="Kopierer manus lokalt og læser det ind i projektforståelsen…";
+  try{const items=await window.brightside.importScreenplay();renderScreenplays(items);$("#screenplayStatus").textContent=items.length?"Manus er gemt lokalt og bruges nu automatisk af assistenten.":"Der blev ikke valgt en fil.";}
+  catch(error){$("#screenplayStatus").textContent="Manus kunne ikke importeres: " + error.message;}
+};
+$("#openScreenplayFolderBtn").onclick=()=>window.brightside.openScreenplayFolder();
 $("#productionForm").onsubmit=async event=>{event.preventDefault();const payload={title:$("#prodTitle").value.trim(),scene:$("#prodScene").value.trim(),assignedTo:$("#prodOwner").value.trim(),engine:$("#prodEngine").value.trim(),deadline:$("#prodDeadline").value,notes:$("#prodNotes").value.trim(),privateOnly:$("#prodPrivate").checked};renderProduction(await window.brightside.createProductionItem(payload));event.target.reset();};
 $("#importPlanBtn").onclick=async()=>{try{$("#planStatus").textContent="Importerer planen…";const data=await window.brightside.importProductionPlan();renderProduction(data);$("#planStatus").textContent="Planen er importeret og gemt i KESSLER/Produktion.";}catch(error){$("#planStatus").textContent=`Importen fejlede: ${error.message}`;}};
 $("#openPlanFolderBtn").onclick=()=>window.brightside.openProductionFolder();

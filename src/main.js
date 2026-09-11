@@ -15,31 +15,46 @@ let higgsWindow;
 let pendingApproval = null;
 let creditApprovalBudget = 0;
 let checkForUpdates;
+let workspaceRootOverride = "";
 
 const statePath = () => path.join(app.getPath("userData"), "state.json");
 const legacyAssetDir = () => path.join(app.getPath("userData"), "project-assets");
-const masterDir = () => path.join(app.getPath("movies"), "Brightside Film Remote", "KESSLER");
-const assetDir = () => path.join(masterDir(), "Genererede billeder");
-const importedDir = () => path.join(masterDir(), "Importerede referencer");
-const promptDir = () => path.join(masterDir(), "Prompts");
-const elementsDir = () => path.join(masterDir(), "Elementer");
+const defaultWorkspaceRoot = () => path.join(app.getPath("movies"), "Brightside Film Remote");
+const workspaceRoot = () => workspaceRootOverride || defaultWorkspaceRoot();
+const masterDir = () => path.join(workspaceRoot(), "KESSLER");
+const projectDir = () => path.join(masterDir(), "00-PROJEKT");
+const referenceArchiveDir = () => path.join(masterDir(), "01-REFERENCER");
+const referenceImagesDir = () => path.join(referenceArchiveDir(), "Billeder");
+const referenceFilmsDir = () => path.join(referenceArchiveDir(), "Film");
+const renderArchiveDir = () => path.join(masterDir(), "04-RENDERINGER-USORTERET");
+const assetDir = () => path.join(renderArchiveDir(), "Billeder");
+const renderFilmDir = () => path.join(renderArchiveDir(), "Film");
+const importedDir = () => path.join(referenceArchiveDir(), "Dokumenter-og-lookbooks");
+const promptDir = () => path.join(projectDir(), "Prompts");
+const elementsDir = () => path.join(masterDir(), "02-ELEMENTER");
 const characterDir = () => path.join(elementsDir(), "Karakterer");
 const locationDir = () => path.join(elementsDir(), "Locations");
-const scenesDir = () => path.join(masterDir(), "Scener");
-const aiKnowledgeDir = () => path.join(masterDir(), "AI-viden");
+const scenesDir = () => path.join(masterDir(), "03-SCENER");
+const aiKnowledgeDir = () => path.join(referenceArchiveDir(), "AI-viden");
 const sceneDir = scene => path.join(scenesDir(), scene.folder);
-const sceneRefsDir = scene => path.join(sceneDir(scene), "Referencer");
+const sceneRefsDir = scene => path.join(sceneDir(scene), "01-REFERENCER");
 const sceneRefImagesDir = scene => path.join(sceneRefsDir(scene), "Billeder");
 const sceneRefFilmsDir = scene => path.join(sceneRefsDir(scene), "Film");
-const sceneWorkDir = scene => path.join(sceneDir(scene), "Work");
-const sceneFinalDir = scene => path.join(sceneDir(scene), "Final");
-const localEditorDeliveryDir = () => path.join(masterDir(), "Godkendt til Allan");
-const productionDir = () => path.join(masterDir(), "Produktion");
+const sceneWorkDir = scene => path.join(sceneDir(scene), "02-WORK");
+const sceneFinalDir = scene => path.join(sceneDir(scene), "03-FINAL");
+const deliveryDir = () => path.join(masterDir(), "05-LEVERINGER");
+const localEditorDeliveryDir = () => path.join(deliveryDir(), "Godkendt til Allan");
+const productionDir = () => path.join(masterDir(), "06-PRODUKTION");
 const productionPlanPath = () => path.join(productionDir(), "KESSLER-arbejdsplan.json");
-const productionBibleDir = () => path.join(masterDir(), "Production Bible");
+const productionBibleDir = () => path.join(projectDir(), "Production Bible");
+const screenplayDir = () => path.join(projectDir(), "Manus");
 const productionBibleJsonPath = () => path.join(productionBibleDir(), "KESSLER-production-bible.json");
 const productionBibleTextPath = () => path.join(productionBibleDir(), "KESSLER-production-bible.md");
 const STATE_SCHEMA_VERSION = 2;
+
+function unclassifiedRenderDir(filename) {
+  return /\.(mp4|mov|m4v|mkv|webm)$/i.test(String(filename || "")) ? renderFilmDir() : assetDir();
+}
 
 function atomicWriteFile(filePath, content) {
   fs.mkdirSync(path.dirname(filePath), {recursive:true});
@@ -72,22 +87,113 @@ function copyLegacyElements(source, destination) {
   }
 }
 
+function copyTreePreserving(source, destination) {
+  if (!fs.existsSync(source) || path.resolve(source) === path.resolve(destination)) return;
+  fs.mkdirSync(destination, {recursive:true});
+  for (const entry of fs.readdirSync(source, {withFileTypes:true})) {
+    if (entry.name.startsWith(".")) continue;
+    const from = path.join(source, entry.name);
+    const to = path.join(destination, entry.name);
+    if (entry.isDirectory()) copyTreePreserving(from, to);
+    else if (!fs.existsSync(to)) fs.copyFileSync(from, to);
+  }
+}
+
+function remapStoredPath(filePath, mappings) {
+  if (!filePath) return filePath;
+  const resolved = path.resolve(filePath);
+  for (const [source, destination] of mappings) {
+    const sourceRoot = path.resolve(source);
+    if (resolved === sourceRoot || resolved.startsWith(sourceRoot + path.sep)) {
+      return path.join(destination, path.relative(sourceRoot, resolved));
+    }
+  }
+  return filePath;
+}
+
+function legacyArchiveMappings(state) {
+  const root = masterDir();
+  const mappings = [
+    [path.join(root, "Genererede billeder"), assetDir()],
+    [path.join(root, "Importerede referencer"), importedDir()],
+    [path.join(root, "Prompts"), promptDir()],
+    [path.join(root, "Elementer"), elementsDir()],
+    [path.join(root, "AI-viden"), aiKnowledgeDir()],
+    [path.join(root, "Godkendt til Allan"), localEditorDeliveryDir()],
+    [path.join(root, "Produktion"), productionDir()],
+    [path.join(root, "Production Bible"), productionBibleDir()]
+  ];
+  for (const scene of state.scenes || []) {
+    const oldScene = path.join(root, "Scener", scene.folder);
+    mappings.push(
+      [path.join(oldScene, "Referencer"), sceneRefsDir(scene)],
+      [path.join(oldScene, "Work"), sceneWorkDir(scene)],
+      [path.join(oldScene, "Final"), sceneFinalDir(scene)]
+    );
+  }
+  return mappings;
+}
+
+function archiveGuide() {
+  return [
+    "BRIGHTSIDE FILM REMOTE · KESSLER-ARKIV",
+    "",
+    "00-PROJEKT",
+    "  Project Bible, manus, prompts og projektets overordnede viden.",
+    "",
+    "01-REFERENCER",
+    "  Originale referencebilleder, referencefilm, lookbooks, dokumenter og AI-viden.",
+    "",
+    "02-ELEMENTER",
+    "  Genbrugelige karakterark og locations, der låser kontinuiteten.",
+    "",
+    "03-SCENER",
+    "  Én nummereret mappe pr. scene:",
+    "  01-REFERENCER = input og virkelige referencer",
+    "  02-WORK       = prompts og igangværende renderinger",
+    "  03-FINAL      = godkendte billeder og film",
+    "",
+    "04-RENDERINGER-USORTERET",
+    "  Renderinger hentet uden en aktiv scene. Sortér dem senere ind i en scene.",
+    "",
+    "05-LEVERINGER",
+    "  Godkendte masterfiler og materiale til Allan.",
+    "",
+    "06-PRODUKTION",
+    "  Arbejdsplan, ansvar, status og deadlines.",
+    "",
+    "Projektstandard: CinemaScope 2.39:1 · 25 fps",
+    ""
+  ].join("\n");
+}
+
 function ensureSceneFolders(scene) {
   [sceneDir(scene), sceneRefsDir(scene), sceneRefImagesDir(scene), sceneRefFilmsDir(scene), sceneWorkDir(scene), sceneFinalDir(scene)]
     .forEach(directory => fs.mkdirSync(directory, {recursive:true}));
 }
 
 function ensureMasterFolder() {
-  [masterDir(), assetDir(), importedDir(), promptDir(), elementsDir(), characterDir(), locationDir(), scenesDir(), aiKnowledgeDir(), localEditorDeliveryDir(), productionDir(), productionBibleDir(), path.join(masterDir(), "Character sheets"), path.join(masterDir(), "Location maps")]
+  const state = loadState();
+  const mappings = legacyArchiveMappings(state);
+  mappings.forEach(([source, destination]) => copyTreePreserving(source, destination));
+  [masterDir(), projectDir(), referenceArchiveDir(), referenceImagesDir(), referenceFilmsDir(), renderArchiveDir(), assetDir(), renderFilmDir(), importedDir(), promptDir(), elementsDir(), characterDir(), locationDir(), scenesDir(), aiKnowledgeDir(), deliveryDir(), localEditorDeliveryDir(), productionDir(), productionBibleDir(), screenplayDir()]
     .forEach(directory => fs.mkdirSync(directory, { recursive: true }));
   copyLegacyElements(path.join(masterDir(), "Character sheets"), characterDir());
   copyLegacyElements(path.join(masterDir(), "Location maps"), locationDir());
+  atomicWriteFile(path.join(masterDir(), "START-HER · ARKIV-OVERSIGT.txt"), archiveGuide());
   const profilePath = path.join(masterDir(), "KESSLER-profil.json");
   if (!fs.existsSync(profilePath)) fs.writeFileSync(profilePath, JSON.stringify(KESSLER_PROFILE, null, 2));
 
-  const state = loadState();
   state.scenes.forEach(ensureSceneFolders);
   let changed = false;
+  for (const collection of [state.imports, state.aiKnowledge, state.screenplays, state.editorDeliveries]) {
+    for (const item of collection || []) {
+      for (const key of ["path", "destination"]) {
+        const updated = remapStoredPath(item[key], mappings);
+        if (updated !== item[key]) { item[key] = updated; changed = true; }
+      }
+    }
+  }
   for (const item of state.imports) {
     if (!item.path || !fs.existsSync(item.path) || !item.path.startsWith(legacyAssetDir())) continue;
     const destination = uniqueDestination(importedDir(), item.name || path.basename(item.path));
@@ -112,19 +218,23 @@ function appendPromptLog(userText, assistantText) {
 }
 
 function initialState() {
-  return { schemaVersion:STATE_SCHEMA_VERSION, project:KESSLER_PROFILE, projectMeta:{logline:"",tone:"Rå dansk bokse-realisme"}, styleLocks:{visualStyle:"",cameraLens:"",characterContinuity:"",locationLighting:"",exclusions:""}, shots:[], takeRatings:{}, sceneBindings:[], imports:[], aiKnowledge:[], scenes:[], activeSceneId:null, currentUserRole:"admin", currentUserName:"Nicolas", onboardingCompleted:false, productionPlan:[], editorName:"Allan", editorDeliveryDir:"", editorDeliveries:[], privateAssets:{}, model:"gpt-5.6-terra", encryptedApiKey:null, conversation:[], autoUpdate:true, updateFeedUrl:"" };
+  return { schemaVersion:STATE_SCHEMA_VERSION, workspaceRoot:"", workspaceConfigured:false, project:KESSLER_PROFILE, projectMeta:{logline:"",tone:"Rå dansk bokse-realisme"}, styleLocks:{visualStyle:"",cameraLens:"",characterContinuity:"",locationLighting:"",exclusions:""}, screenplays:[], shots:[], takeRatings:{}, sceneBindings:[], imports:[], aiKnowledge:[], scenes:[], activeSceneId:null, currentUserRole:"admin", currentUserName:"Nicolas", onboardingCompleted:false, productionPlan:[], editorName:"Allan", editorDeliveryDir:"", editorDeliveries:[], privateAssets:{}, model:"gpt-5.6-terra", encryptedApiKey:null, conversation:[], autoUpdate:true, updateFeedUrl:"" };
 }
 
 function normalizeLoadedState(parsed) {
     const state = {...initialState(), ...parsed};
     if (!Array.isArray(state.imports)) state.imports = [];
     if (!Array.isArray(state.aiKnowledge)) state.aiKnowledge = [];
+    if (!Array.isArray(state.screenplays)) state.screenplays = [];
     if (!Array.isArray(state.scenes)) state.scenes = [];
     if (!Array.isArray(state.editorDeliveries)) state.editorDeliveries = [];
     if (!Array.isArray(state.productionPlan)) state.productionPlan = [];
     if (!state.privateAssets || typeof state.privateAssets !== "object") state.privateAssets = {};
     state.currentUserRole = "admin";
     state.currentUserName = "Nicolas";
+    workspaceRootOverride = String(state.workspaceRoot || "").trim() || defaultWorkspaceRoot();
+    state.workspaceRoot = workspaceRootOverride;
+    state.workspaceConfigured = state.workspaceConfigured === true;
     state.schemaVersion = STATE_SCHEMA_VERSION;
     normalizeBible(state);
     return state;
@@ -147,6 +257,62 @@ function saveState(next) {
     try { fs.copyFileSync(destination, `${destination}.backup`); } catch {}
   }
   atomicWriteFile(destination, JSON.stringify(next, null, 2));
+}
+
+function workspaceSnapshot(state = loadState()) {
+  return {
+    configured: state.workspaceConfigured === true,
+    workspaceRoot: state.workspaceRoot || workspaceRoot(),
+    projectRoot: masterDir(),
+    folders: [
+      "00-PROJEKT",
+      "01-REFERENCER",
+      "02-ELEMENTER",
+      "03-SCENER",
+      "04-RENDERINGER-USORTERET",
+      "05-LEVERINGER",
+      "06-PRODUKTION"
+    ]
+  };
+}
+
+async function chooseWorkspace() {
+  const state = loadState();
+  const oldWorkspace = workspaceRoot();
+  const oldMaster = path.join(oldWorkspace, "KESSLER");
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Vælg lokalt arbejdsområde til Brightside Film Remote",
+    defaultPath: state.workspaceRoot || defaultWorkspaceRoot(),
+    buttonLabel: "Brug denne mappe",
+    properties: ["openDirectory", "createDirectory"]
+  });
+  if (result.canceled || !result.filePaths[0]) return {ok:false, ...workspaceSnapshot(state)};
+
+  const selected = path.resolve(result.filePaths[0]);
+  const newMaster = path.join(selected, "KESSLER");
+  if (newMaster.startsWith(path.resolve(oldMaster) + path.sep)) {
+    throw new Error("Vælg en mappe uden for den nuværende KESSLER-mappe.");
+  }
+  fs.mkdirSync(selected, {recursive:true});
+  fs.accessSync(selected, fs.constants.R_OK | fs.constants.W_OK);
+
+  if (path.resolve(oldMaster) !== path.resolve(newMaster) && fs.existsSync(oldMaster)) {
+    copyTreePreserving(oldMaster, newMaster);
+    const rootMapping = [[oldMaster, newMaster]];
+    for (const collection of [state.imports, state.aiKnowledge, state.screenplays, state.editorDeliveries]) {
+      for (const item of collection || []) {
+        for (const key of ["path", "destination"]) item[key] = remapStoredPath(item[key], rootMapping);
+      }
+    }
+    state.editorDeliveryDir = remapStoredPath(state.editorDeliveryDir, rootMapping);
+  }
+
+  state.workspaceRoot = selected;
+  state.workspaceConfigured = true;
+  workspaceRootOverride = selected;
+  saveState(state);
+  ensureMasterFolder();
+  return {ok:true, ...workspaceSnapshot(loadState())};
 }
 
 function imageThumbnail(filePath) {
@@ -346,6 +512,72 @@ function updateProductionItem({id,field,value}) {
 function removeProductionItem(id){const state=loadState();assertAdmin(state);state.productionPlan=state.productionPlan.filter(x=>x.id!==id);saveState(state);persistProductionPlan(state);return productionSnapshot();}
 function openProductionFolder(){fs.mkdirSync(productionDir(),{recursive:true});return shell.openPath(productionDir());}
 
+function screenplaySnapshot() {
+  const state = loadState();
+  return (state.screenplays || []).map(item => ({
+    id:item.id,
+    name:item.name,
+    active:item.active !== false,
+    importedAt:item.importedAt,
+    characters:Number(item.characters || String(item.summary || "").length)
+  })).reverse();
+}
+
+async function extractScreenplayText(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".pdf") {
+    const parsed = await pdf(fs.readFileSync(filePath));
+    return parsed.text.replace(/\s+\n/g, "\n").trim().slice(0, 180000);
+  }
+  if (ext === ".docx") {
+    const xml = execFileSync("/usr/bin/unzip", ["-p", filePath, "word/document.xml"], {encoding:"utf8", maxBuffer:50 * 1024 * 1024});
+    return decodeXml(xml.replace(/<\/w:p>/g, "\n").replace(/<w:tab\/>/g, "\t")).replace(/\n{3,}/g, "\n\n").trim().slice(0, 180000);
+  }
+  if (ext === ".fdx") {
+    const xml = fs.readFileSync(filePath, "utf8");
+    return decodeXml(xml.replace(/<\/Paragraph>/g, "\n").replace(/<\/Text>/g, " ")).replace(/\n{3,}/g, "\n\n").trim().slice(0, 180000);
+  }
+  return fs.readFileSync(filePath, "utf8").trim().slice(0, 180000);
+}
+
+async function importScreenplay() {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title:"Upload manus til KESSLER Project Bible",
+    properties:["openFile"],
+    filters:[{name:"Manus", extensions:["pdf","docx","fdx","txt","md"]}]
+  });
+  if (result.canceled || !result.filePaths[0]) return screenplaySnapshot();
+  const source = result.filePaths[0];
+  fs.mkdirSync(screenplayDir(), {recursive:true});
+  const destination = uniqueDestination(screenplayDir(), path.basename(source));
+  fs.copyFileSync(source, destination);
+  const summary = await extractScreenplayText(destination);
+  if (!summary.trim()) throw new Error("Manuskriptet indeholder ingen læsbar tekst.");
+  const state = loadState();
+  state.screenplays.forEach(item => { item.active = false; });
+  state.screenplays.push({
+    id:Date.now() + "-" + Math.random().toString(36).slice(2,8),
+    name:path.basename(source),
+    path:destination,
+    summary,
+    characters:summary.length,
+    active:true,
+    importedAt:new Date().toISOString()
+  });
+  saveState(state);
+  return screenplaySnapshot();
+}
+
+function removeScreenplay(id) {
+  const state = loadState();
+  const item = state.screenplays.find(entry => entry.id === id);
+  if (item?.path && item.path.startsWith(screenplayDir()) && fs.existsSync(item.path)) fs.unlinkSync(item.path);
+  state.screenplays = state.screenplays.filter(entry => entry.id !== id);
+  if (state.screenplays.length && !state.screenplays.some(entry => entry.active !== false)) state.screenplays[state.screenplays.length - 1].active = true;
+  saveState(state);
+  return screenplaySnapshot();
+}
+
 function persistProductionBible(state) {
   normalizeBible(state);
   const active = activeScene(state);
@@ -360,6 +592,7 @@ function persistProductionBible(state) {
     scenes:state.scenes,
     shots:state.shots,
     sceneBindings:state.sceneBindings,
+    screenplays:state.screenplays.map(item => ({name:item.name,active:item.active !== false,importedAt:item.importedAt})),
     activeSceneId:state.activeSceneId,
     activeScene:active ? {id:active.id,title:active.title,folder:active.folder,anchorFrame:active.anchorFrame||""} : null
   };
@@ -738,13 +971,15 @@ async function runAssistant(userText, selectedEngine = "auto") {
   const sceneReferences = [...sceneMedia.images,...sceneMedia.films,...sceneMedia.documents].map(item=>`${item.kind}: ${item.name}`).join(", ");
   const sceneBindings = scene ? state.sceneBindings.filter(item=>item.sceneId===scene.id).map(item=>`${item.type}: ${item.sceneFile}${item.locked?" (låst)":""}`).join(", ") : "";
   const externalKnowledge = state.aiKnowledge.map(item => `[${item.source.toUpperCase()} · ${item.name}]\n${item.summary || ""}`).join("\n\n").slice(-80000);
+  const screenplays = state.screenplays.filter(item => item.active !== false).map(item => "[AKTIVT MANUS · " + item.name + "]\n" + (item.summary || "")).join("\n\n").slice(-120000);
   const imported = [
+    screenplays ? "FILMENS MANUSKRIPT — BRUG DET TIL OVERORDNET HISTORIE, SCENER, KARAKTERER OG LOCATIONS:\n" + screenplays : "INTET MANUS UPLOADET",
     `PRODUCTION BIBLE:\n${buildBibleText(state)}`,
     `ENGINE-KONTRAKTER:\n${JSON.stringify(ENGINE_CATALOG)}`,
     scene ? `AKTIV SCENE: ${scene.title}. Kontinuitetsreferencer: ${sceneReferences || "ingen valgt endnu"}. Låste scene-elementer: ${sceneBindings || "ingen"}` : "INGEN AKTIV SCENE",
     state.imports.map(x => `${x.name}: ${x.summary || "visuel reference"}`).join("\n"),
     externalKnowledge ? `IMPORTERET AI-VIDEN FRA CLAUDE/HIGGSFIELD/ANDRE:\n${externalKnowledge}` : "INGEN IMPORTERET AI-VIDEN"
-  ].join("\n").slice(0, 50000);
+  ].join("\n").slice(0, 160000);
   const screenshot = await screenshotDataUrl();
   const references = importedReferenceImages(state.imports);
   let input = [
@@ -781,18 +1016,20 @@ async function runAssistant(userText, selectedEngine = "auto") {
 }
 
 async function importFiles() {
-  const result = await dialog.showOpenDialog(mainWindow, {properties:["openFile","multiSelections"], filters:[{name:"Lookbooks, manus og referencer", extensions:["pdf","txt","md","jpg","jpeg","png","webp"]}]});
+  const result = await dialog.showOpenDialog(mainWindow, {properties:["openFile","multiSelections"], filters:[{name:"Lookbooks og referencer", extensions:["pdf","txt","md","jpg","jpeg","png","webp","tif","tiff","mp4","mov","m4v","mkv","webm"]}]});
   if (result.canceled) return [];
   const state = loadState();
-  fs.mkdirSync(importedDir(), {recursive:true});
+  [importedDir(), referenceImagesDir(), referenceFilmsDir()].forEach(directory => fs.mkdirSync(directory, {recursive:true}));
   for (const source of result.filePaths) {
     const ext = path.extname(source).toLowerCase();
     const id = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-    const destination = uniqueDestination(importedDir(), `${id}-${safeFilePart(path.basename(source, ext))}${ext}`);
+    const destinationDirectory = [".jpg",".jpeg",".png",".webp",".tif",".tiff"].includes(ext) ? referenceImagesDir() : [".mp4",".mov",".m4v",".mkv",".webm"].includes(ext) ? referenceFilmsDir() : importedDir();
+    const destination = uniqueDestination(destinationDirectory, `${id}-${safeFilePart(path.basename(source, ext))}${ext}`);
     fs.copyFileSync(source, destination);
     let summary = "Visuel reference. Brug motiv, farve, tekstur, kostume og lys som analysegrundlag — kopiér ikke automatisk alle egenskaber.";
     if (ext === ".pdf") { const parsed = await pdf(fs.readFileSync(destination)); summary = parsed.text.slice(0, 18000); }
     if (ext === ".txt" || ext === ".md") summary = fs.readFileSync(destination, "utf8").slice(0, 18000);
+    if ([".mp4",".mov",".m4v",".mkv",".webm"].includes(ext)) summary = "Referencefilm. Brug bevægelse, blocking, timing og kameraføring som analysegrundlag.";
     state.imports.push({id, name:path.basename(source), path:destination, kind:ext.slice(1), summary});
   }
   saveState(state);
@@ -871,7 +1108,7 @@ app.whenReady().then(() => {
   higgsSession.on("will-download", (_event, item) => {
     const state = loadState();
     const scene = activeScene(state);
-    const destinationDirectory = scene ? sceneWorkDir(scene) : assetDir();
+    const destinationDirectory = scene ? sceneWorkDir(scene) : unclassifiedRenderDir(item.getFilename());
     fs.mkdirSync(destinationDirectory, {recursive:true});
     item.setSavePath(uniqueDestination(destinationDirectory, item.getFilename()));
     item.once("done", (_doneEvent, status) => {
@@ -879,9 +1116,15 @@ app.whenReady().then(() => {
     });
   });
   checkForUpdates = setupUpdater({getWindow:()=>mainWindow, getSettings:loadState, notify:message => mainWindow?.webContents.send("update:status", message)});
-  ipcMain.handle("state:get", () => { const s = loadState(); return {...s, encryptedApiKey:undefined, hasApiKey:Boolean(getApiKey(s)), imports:s.imports.map(({path:_p,...x})=>x), workflows:HIGGSFIELD_WORKFLOWS}; });
+  ipcMain.handle("state:get", () => { const s = loadState(); return {...s, encryptedApiKey:undefined, hasApiKey:Boolean(getApiKey(s)), imports:s.imports.map(({path:_p,...x})=>x), screenplays:s.screenplays.map(({path:_p,summary:_s,...x})=>x), workflows:HIGGSFIELD_WORKFLOWS}; });
   ipcMain.handle("settings:save", (_e, {apiKey, model, autoUpdate, updateFeedUrl}) => { const s=loadState(); if(apiKey) s.encryptedApiKey=safeStorage.encryptString(apiKey).toString("base64"); if(model) s.model=model; if(typeof autoUpdate==="boolean") s.autoUpdate=autoUpdate; if(typeof updateFeedUrl==="string") s.updateFeedUrl=updateFeedUrl.trim(); saveState(s); return {ok:true, hasApiKey:Boolean(getApiKey(s))}; });
-  ipcMain.handle("onboarding:complete", (_e, name) => { const s=loadState(); if(String(name||"").trim()) s.currentUserName=String(name).trim(); if(!s.deviceId) s.deviceId=`${Date.now()}-${Math.random().toString(36).slice(2,8)}`; s.onboardingCompleted=true; saveState(s); return {ok:true}; });
+  ipcMain.handle("onboarding:complete", (_e, name) => { const s=loadState(); if(!s.workspaceConfigured) throw new Error("Vælg først dit lokale arbejdsområde."); if(String(name||"").trim()) s.currentUserName=String(name).trim(); if(!s.deviceId) s.deviceId=`${Date.now()}-${Math.random().toString(36).slice(2,8)}`; s.onboardingCompleted=true; saveState(s); return {ok:true}; });
+  ipcMain.handle("workspace:get", () => workspaceSnapshot());
+  ipcMain.handle("workspace:choose", () => chooseWorkspace());
+  ipcMain.handle("screenplay:get", () => screenplaySnapshot());
+  ipcMain.handle("screenplay:import", () => importScreenplay());
+  ipcMain.handle("screenplay:remove", (_e, id) => removeScreenplay(id));
+  ipcMain.handle("screenplay:open-folder", () => { fs.mkdirSync(screenplayDir(), {recursive:true}); return shell.openPath(screenplayDir()); });
   ipcMain.handle("production:get", () => productionSnapshot());
   ipcMain.handle("production:import", () => importProductionPlan());
   ipcMain.handle("production:create", (_e, payload) => createProductionItem(payload));

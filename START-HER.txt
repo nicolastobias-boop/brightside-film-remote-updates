@@ -1,10 +1,13 @@
-BRIGHTSIDE FILM REMOTE 0.8.0
+BRIGHTSIDE FILM REMOTE 0.8.1
 
 Åbn DMG-filen og træk appen til Programmer. Læs INSTALLATION.txt i vinduet
 for hjælp til første åbning og kopiering af Terminal-kommandoen fra TextEdit.
 
 Brightside fylder nu hovedvinduet. Brug Åbn Higgsfield øverst for at åbne
 Higgsfield separat. Luk det vindue for at vende tilbage til arbejdet.
+
+Ved første start vælger du et lokalt arbejdsområde. Her opretter appen
+et nummereret KESSLER-arkiv til manus, referencer, renderinger og Final.
 
 Søg efter opdatering viser versionsnummer eller en konkret fejl.
 Projekter, login og referencer bevares.

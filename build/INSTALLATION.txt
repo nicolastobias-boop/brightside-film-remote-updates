@@ -10,8 +10,13 @@ INSTALLATION PÅ MAC
 1. Træk “Brightside Film Remote” over på mappen “Applications / Programmer”.
 2. Vent til kopieringen er færdig.
 3. Højreklik på appen i Programmer, og vælg “Åbn”.
-4. Åbn Higgsfield med knappen øverst i Brightside, og log ind én gang.
+4. Vælg først det lokale arbejdsområde, hvor KESSLER-arkivet skal ligge.
+5. Åbn Higgsfield med knappen øverst i Brightside, og log ind én gang.
    Login gemmes kun lokalt på denne Mac.
+
+Arbejdsområdet får separate mapper til projekt og manus, referencer,
+elementer, scener, renderinger, leveringer og produktion. Materialet
+gemmes lokalt og bevares ved senere opdateringer.
 
 HVIS MACOS STADIG BLOKERER APPEN
 

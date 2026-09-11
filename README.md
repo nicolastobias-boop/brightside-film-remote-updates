@@ -43,7 +43,8 @@ Kør `npm run dist:mac`. Den usignerede Apple Silicon `.zip` lægges i `dist`. P
 - Appen søger automatisk efter nye versioner ved start og derefter hver sjette time.
 - Opdateringer hentes kun fra Brightsides faste GitHub-kanal og kontrolleres med SHA-256 før installation.
 - Login, API-nøgle, projektmateriale og referencer ligger uden for app-pakken og bevares ved opdatering.
-- Alt projektmateriale gemmes synligt i `Film/Brightside Film Remote/KESSLER` på Mac'en. Production Bible, scener, prompts, character sheets, location maps, genererede billeder og importerede referencer får egne mapper.
+- Første gang vælger Nicolas selv det lokale arbejdsområde. Appen opretter et nummereret `KESSLER`-arkiv med særskilte mapper til projekt/manus, referencer, elementer, scener, renderinger, leveringer og produktion.
+- Manus kan uploades som PDF, DOCX, FDX, TXT eller Markdown i Project Bible. Den nyeste version gemmes lokalt som aktivt manus og indgår automatisk i assistentens forståelse af historie, scener, karakterer og locations.
 - State gemmes atomisk med en lokal backup, så et afbrudt save ikke så let kan ødelægge projektet.
 - “Kopiér til Final” bevarer Work-originalen. Allan-mastere versionsnummereres også mod filer, der allerede ligger i leveringsmappen.
 - Betaling og køb er ikke en del af denne testversion.
