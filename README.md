@@ -1,4 +1,8 @@
-# Brightside Film Remote — version 0.7.2
+# Brightside Film Remote — version 0.8.2
+
+Version 0.8.2 gendanner det lokale Claude + OpenAI-parløb og bevarer projektarkivet fra 0.8.1. Under Indstillinger kan Claude tilsluttes med egen Anthropic-nøgle, modelnavn og valgfrit workspace-id. Begge assistenter vurderer opgaven, og den valgte OpenAI-model samler forslagene. Claude modtager tekstkontekst, ikke selve referencefilmene. API-adgang afhænger af brugerens konto og modelvalg.
+
+Udgaven indeholder også samlet manusanalyse, karakterregister og scenesøgning. Tidligere lokalt gemte manusfiler bevares ved arkivflytning; et aktivt uploadet manus kan bruges som kilde, når der ikke er gemt et manus i teksteditoren.
 
 En lokal Apple Silicon Mac-app med synlig Higgsfield-browser, dansk chat og stemmestyring, filmspecialiseret promptarbejde, Kessler-projektprofil og godkendelse før credit-forbrug.
 
