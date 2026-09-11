@@ -104,7 +104,7 @@ window.brightside.onUpdateStatus(message=>{
   const busy=/henter|søger/i.test(message);
   button.textContent=busy ? message : `↓ ${message}`;
   button.disabled=busy;
-  if(!busy)setTimeout(()=>{button.textContent="↓ Hent og installer opdatering";button.disabled=false;},6500);
+  if(!busy)setTimeout(()=>{button.textContent="↓ Søg efter opdatering";button.disabled=false;},6500);
 });
 $("#importBtn").onclick=async()=>renderImports(await window.brightside.importProjectFiles());
 $("#openProjectFolderBtn").onclick=()=>window.brightside.openProjectFolder();
@@ -118,7 +118,7 @@ $("#imageForm").addEventListener("submit",async event=>{
   }catch(error){$("#imageStatus").textContent=`Kunne ikke skabe billedet: ${error.message}`;}
   finally{$("#createImageBtn").disabled=false;}
 });
-$("#homeBtn").onclick=()=>window.brightside.navigate("https://higgsfield.ai/");
+$("#homeBtn").onclick=()=>window.brightside.openHiggsfield();
 window.brightside.onUrl(url=>{$("#url").textContent=url.replace(/^https?:\/\//,"").slice(0,85);});
 window.brightside.onApproval(({purpose,risk})=>{$("#approvalText").textContent=purpose;$("#approvalRisk").textContent=risk==="credit_spend"?"Denne handling kan bruge Higgsfield-credits.":"Denne handling har en ekstern effekt.";$("#approvalDialog").showModal();});
 $("#approveBtn").onclick=()=>{$("#approvalDialog").close();window.brightside.decideApproval("once");};

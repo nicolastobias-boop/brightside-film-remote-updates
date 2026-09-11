@@ -11,6 +11,7 @@ const REPOSITORY = "nicolastobias-boop/brightside-film-remote-updates";
 const RELEASE_API = `https://api.github.com/repos/${REPOSITORY}/releases/latest`;
 const RELEASE_PREFIX = `https://github.com/${REPOSITORY}/releases/download/`;
 let interval;
+let startupTimer;
 let checking = false;
 
 function versionParts(value) {
@@ -29,6 +30,7 @@ function isNewer(candidate, current) {
 
 async function githubJson(url) {
   const response = await fetch(url, {
+    signal: AbortSignal.timeout(30000),
     headers: { Accept: "application/vnd.github+json", "User-Agent": "Brightside-Film-Remote-Updater" }
   });
   if (!response.ok) throw new Error(`GitHub svarede ${response.status}`);
@@ -126,7 +128,11 @@ async function prepareUpdate(release, notify) {
   return stagedApp;
 }
 
-function setupUpdater({ getSettings, notify }) {
+function setupUpdater({ getSettings, notify, getWindow = () => null }) {
+  const showMessage = options => {
+    const parent = getWindow();
+    return parent && !parent.isDestroyed() ? dialog.showMessageBox(parent, options) : dialog.showMessageBox(options);
+  };
   const check = async (manual = false) => {
     const settings = getSettings();
     if (!app.isPackaged) return notify("Auto-update testes først i den pakkede app");
@@ -139,11 +145,15 @@ function setupUpdater({ getSettings, notify }) {
       const release = await githubJson(RELEASE_API);
       const nextVersion = release.tag_name.replace(/^v/, "");
       if (!isNewer(nextVersion, app.getVersion())) {
-        if (manual) notify("Appen er opdateret");
+        if (manual) {
+          const message = `Du bruger version ${app.getVersion()}. Der er ingen nyere udgivelse klar.`;
+          notify(message);
+          await showMessage({type:"info",title:"Brightside Film Remote",message,buttons:["OK"]});
+        }
         return;
       }
 
-      const choice = await dialog.showMessageBox({
+      const choice = await showMessage({
         type: "info",
         title: "Ny Brightside Film Remote",
         message: `Version ${nextVersion} er klar.`,
@@ -152,10 +162,11 @@ function setupUpdater({ getSettings, notify }) {
         defaultId: 0,
         cancelId: 1
       });
-      if (choice.response !== 0) return;
+      if (choice.response !== 0) { notify("Opdateringen er udsat. Du kan søge igen senere."); return; }
 
       const stagedApp = await prepareUpdate(release, notify);
-      const installChoice = await dialog.showMessageBox({
+      notify(`Version ${nextVersion} er klar til installation.`);
+      const installChoice = await showMessage({
         type: "info",
         title: "Opdateringen er klar",
         message: `Version ${nextVersion} er hentet og sikkerhedskontrolleret.`,
@@ -166,19 +177,22 @@ function setupUpdater({ getSettings, notify }) {
       });
       if (installChoice.response === 0) installAfterQuit(stagedApp);
     } catch (error) {
-      notify(`Opdatering kunne ikke gennemføres: ${error.message}`);
+      const message = `Opdatering kunne ikke gennemføres: ${error.message}`;
+      notify(message);
+      if (manual) await showMessage({type:"error",title:"Opdatering mislykkedes",message,detail:"Din nuværende app og dine projekter er bevaret. Prøv igen, når forbindelsen er klar.",buttons:["OK"]});
     } finally {
       checking = false;
     }
   };
 
-  setTimeout(() => check(false), 15000);
+  startupTimer = setTimeout(() => check(false), 15000);
   interval = setInterval(() => check(false), 6 * 60 * 60 * 1000);
   return () => check(true);
 }
 
 function stopUpdater() {
   if (interval) clearInterval(interval);
+  if (startupTimer) clearTimeout(startupTimer);
 }
 
 module.exports = { setupUpdater, stopUpdater, isNewer };

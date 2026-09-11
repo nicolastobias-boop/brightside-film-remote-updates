@@ -1,15 +1,10 @@
-BRIGHTSIDE FILM REMOTE 0.7.2 — PERSONLIG NICOLAS/ADMIN
+BRIGHTSIDE FILM REMOTE 0.8.0
 
-1. Pak ZIP-filen ud på din Mac.
-2. Dobbeltklik på "Installer-Brightside-Film-Remote.command".
-3. Hvis macOS blokerer filen: højreklik på den og vælg Åbn.
-4. Hvis Node.js mangler, åbner installeren den officielle downloadside.
-   Installer LTS-versionen og kør derefter installeren igen.
-5. Installationen henter appens komponenter og kan tage 5–15 minutter.
-6. Når Finder viser appen: højreklik på "Brightside Film Remote" og vælg Åbn første gang.
+Åbn DMG-filen og træk appen til Programmer. Læs INSTALLATION.txt i vinduet
+for hjælp til første åbning og kopiering af Terminal-kommandoen fra TextEdit.
 
-Dette er den sidste planlagte manuelle installation. Appen
-søger selv efter nye versioner. Login, indstillinger, Kessler-materiale
-og referencer bevares ved opdatering.
+Brightside fylder nu hovedvinduet. Brug Åbn Higgsfield øverst for at åbne
+Higgsfield separat. Luk det vindue for at vende tilbage til arbejdet.
 
-Appen bliver installeret i din personlige Applications-mappe.
+Søg efter opdatering viser versionsnummer eller en konkret fejl.
+Projekter, login og referencer bevares.

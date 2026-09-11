@@ -11,6 +11,7 @@ const { setupUpdater, stopUpdater } = require("./updater");
 
 let mainWindow;
 let higgsView;
+let higgsWindow;
 let pendingApproval = null;
 let creditApprovalBudget = 0;
 let checkForUpdates;
@@ -596,10 +597,23 @@ function getApiKey(state) {
 }
 
 function layout() {
-  if (!mainWindow || !higgsView) return;
-  const [width, height] = mainWindow.getContentSize();
-  const sidebar = Math.max(390, Math.min(520, Math.floor(width * 0.34)));
-  higgsView.setBounds({ x: sidebar, y: 54, width: Math.max(1, width - sidebar), height: Math.max(1, height - 54) });
+  if (!higgsWindow || higgsWindow.isDestroyed() || !higgsView) return;
+  const [width, height] = higgsWindow.getContentSize();
+  higgsView.setBounds({ x: 0, y: 0, width, height });
+}
+
+function openHiggsfield() {
+  if (!higgsWindow || higgsWindow.isDestroyed()) {
+    higgsWindow = new BrowserWindow({width:1280,height:900,minWidth:800,minHeight:600,
+      title:"Higgsfield · Brightside Film Remote",backgroundColor:"#0b0b0c",
+      webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:true}});
+    higgsWindow.contentView.addChildView(higgsView);
+    higgsWindow.on("resize", layout);
+    higgsWindow.on("close", event => { event.preventDefault(); higgsWindow.hide(); });
+  }
+  layout();
+  higgsWindow.show();
+  higgsWindow.focus();
 }
 
 function createWindow() {
@@ -641,19 +655,22 @@ function createWindow() {
       sandbox: true
     }
   });
-  mainWindow.contentView.addChildView(higgsView);
+
   higgsView.webContents.loadURL("https://higgsfield.ai/");
   higgsView.webContents.setWindowOpenHandler(({url}) => { higgsView.webContents.loadURL(url); return {action: "deny"}; });
   layout();
-  mainWindow.on("resize", layout);
+
   higgsView.webContents.on("did-navigate", (_e, url) => mainWindow?.webContents.send("higgs:url", url));
   mainWindow.on("closed", () => {
     mainWindow = null;
+    if (higgsWindow) { higgsWindow.destroy(); higgsWindow = null; }
+    higgsView?.webContents.close();
     higgsView = null;
   });
 }
 
 async function screenshotDataUrl() {
+  openHiggsfield();
   const image = await higgsView.webContents.capturePage();
   return image.toDataURL();
 }
@@ -861,7 +878,7 @@ app.whenReady().then(() => {
       if (status === "completed") mainWindow?.webContents.send("continuity:changed", continuitySnapshot());
     });
   });
-  checkForUpdates = setupUpdater({getSettings:loadState, notify:message => mainWindow?.webContents.send("update:status", message)});
+  checkForUpdates = setupUpdater({getWindow:()=>mainWindow, getSettings:loadState, notify:message => mainWindow?.webContents.send("update:status", message)});
   ipcMain.handle("state:get", () => { const s = loadState(); return {...s, encryptedApiKey:undefined, hasApiKey:Boolean(getApiKey(s)), imports:s.imports.map(({path:_p,...x})=>x), workflows:HIGGSFIELD_WORKFLOWS}; });
   ipcMain.handle("settings:save", (_e, {apiKey, model, autoUpdate, updateFeedUrl}) => { const s=loadState(); if(apiKey) s.encryptedApiKey=safeStorage.encryptString(apiKey).toString("base64"); if(model) s.model=model; if(typeof autoUpdate==="boolean") s.autoUpdate=autoUpdate; if(typeof updateFeedUrl==="string") s.updateFeedUrl=updateFeedUrl.trim(); saveState(s); return {ok:true, hasApiKey:Boolean(getApiKey(s))}; });
   ipcMain.handle("onboarding:complete", (_e, name) => { const s=loadState(); if(String(name||"").trim()) s.currentUserName=String(name).trim(); if(!s.deviceId) s.deviceId=`${Date.now()}-${Math.random().toString(36).slice(2,8)}`; s.onboardingCompleted=true; saveState(s); return {ok:true}; });
@@ -885,7 +902,8 @@ app.whenReady().then(() => {
   ipcMain.handle("project:remove", (_e, id) => { const s=loadState(); const item=s.imports.find(x=>x.id===id); if(item) fs.unlink(item.path,()=>{}); s.imports=s.imports.filter(x=>x.id!==id); saveState(s); return s.imports.map(({path:_p,...x})=>x); });
   ipcMain.handle("voice:transcribe", (_e, data, mime) => transcribeAudio(data, mime));
   ipcMain.handle("image:create", (_e, request) => createReferenceImage(request));
-  ipcMain.handle("higgs:navigate", async (_e, url) => { await higgsView.webContents.loadURL(url); return true; });
+  ipcMain.handle("higgs:open", () => { openHiggsfield(); return true; });
+  ipcMain.handle("higgs:navigate", async (_e, url) => { openHiggsfield(); await higgsView.webContents.loadURL(url); return true; });
   ipcMain.handle("update:check", () => checkForUpdates?.());
   ipcMain.handle("project:open-folder", () => shell.openPath(masterDir()));
   ipcMain.handle("knowledge:get", () => aiKnowledgeSnapshot());

@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld("brightside", {
   removeProjectFile: id => ipcRenderer.invoke("project:remove", id),
   transcribe: (buffer, mime) => ipcRenderer.invoke("voice:transcribe", buffer, mime),
   createImage: request => ipcRenderer.invoke("image:create", request),
+  openHiggsfield: () => ipcRenderer.invoke("higgs:open"),
   navigate: url => ipcRenderer.invoke("higgs:navigate", url),
   checkForUpdates: () => ipcRenderer.invoke("update:check"),
   openProjectFolder: () => ipcRenderer.invoke("project:open-folder"),

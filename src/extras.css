@@ -29,3 +29,15 @@
 
 .referenceUploadHero{margin:12px 0;padding:14px;border:1px solid rgba(255,118,84,.55);border-radius:11px;background:linear-gradient(145deg,rgba(255,93,54,.13),rgba(17,18,22,.94));box-shadow:0 12px 30px rgba(0,0,0,.18)}.referenceUploadHero h3{margin:5px 0;font-size:16px}.referenceUploadHero p{margin:5px 0;color:#a9a6a0;font-size:11px;line-height:1.45}.referenceUploadActions,.sceneUploadBar{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.uploadReference{min-height:44px;border:1px solid #ff7654;border-radius:7px;background:#ff5d36;color:white;padding:10px 12px;font-weight:800;cursor:pointer}.uploadReference.film{border-color:#7796c8;background:#243a5c}.uploadReference:disabled{opacity:.38;cursor:not-allowed}.sceneUploadBar{grid-template-columns:1fr 1fr auto auto;margin-bottom:16px}.legacyReferences:empty{display:none}.identityBlock h4{margin:14px 0 4px;color:#d9d6d0;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
 @media(max-width:760px){.referenceUploadActions,.sceneUploadBar{grid-template-columns:1fr}}
+
+/* Brightside workspace fills the main window; Higgsfield is a separate tool window. */
+.sidebar{width:100%;border-right:0}.topbar{grid-template-columns:1fr auto auto 44px;gap:16px}
+.tabs{height:56px;flex-shrink:0;gap:24px;padding:0 28px}.tabs button{font-size:13px}
+.panel{height:calc(100% - 56px)}.panel>section{width:100%}
+.panel .identityBlock,.identityHead{padding:24px 32px}
+#chat .projectCard,#chat .referenceUploadHero{width:auto;margin:16px 28px}
+#chat .messages{padding:8px 28px 20px}#chat .composer{margin:0 28px 24px}
+.workflowCards,.engineCenter{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.assetGrid{grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+.browserbar button{border:1px solid #49494d;border-radius:8px;padding:9px 15px;white-space:nowrap}
+@media(max-width:1150px){.topbar{gap:8px}.brand{letter-spacing:.04em}.tabs{gap:16px}}
