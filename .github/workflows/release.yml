@@ -22,12 +22,10 @@ jobs:
         run: |
           VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
           test -s build/INSTALLATION.txt
-          python3 -c 'from pathlib import Path; Path("release-installation.md").write_text("## Installation og Terminal\\n\\n```text\\n" + Path("build/INSTALLATION.txt").read_text() + "\\n```\\n")'
+          python3 -c 'from pathlib import Path; Path("release-installation.md").write_text("## Installation og Terminal\n\n```text\n" + Path("build/INSTALLATION.txt").read_text() + "\n```\n")'
           if gh release view "v$VERSION" --json body --jq .body > release-notes.md; then
-            if ! grep -q '## Installation og Terminal' release-notes.md; then
-              cat release-installation.md >> release-notes.md
-              gh release edit "v$VERSION" --notes-file release-notes.md
-            fi
+            python3 -c 'from pathlib import Path; p=Path("release-notes.md"); p.write_text(p.read_text().split("## Installation og Terminal")[0].rstrip() + chr(10)*2 + Path("release-installation.md").read_text())'
+            gh release edit "v$VERSION" --notes-file release-notes.md
             echo "existing=true" >> "$GITHUB_OUTPUT"
           else
             echo "existing=false" >> "$GITHUB_OUTPUT"
