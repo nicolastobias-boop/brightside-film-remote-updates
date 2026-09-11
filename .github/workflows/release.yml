@@ -15,21 +15,43 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Keep installation guidance on every release
+        id: guidance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
+          test -s build/INSTALLATION.txt
+          python3 -c 'from pathlib import Path; Path("release-installation.md").write_text("## Installation og Terminal\\n\\n```text\\n" + Path("build/INSTALLATION.txt").read_text() + "\\n```\\n")'
+          if gh release view "v$VERSION" --json body --jq .body > release-notes.md; then
+            if ! grep -q '## Installation og Terminal' release-notes.md; then
+              cat release-installation.md >> release-notes.md
+              gh release edit "v$VERSION" --notes-file release-notes.md
+            fi
+            echo "existing=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "existing=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Node.js
+        if: steps.guidance.outputs.existing != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
       - name: Install and test
+        if: steps.guidance.outputs.existing != 'true'
         run: |
           npm ci
           npm run check
 
       - name: Build Apple Silicon app
+        if: steps.guidance.outputs.existing != 'true'
         run: npm run dist:mac
 
       - name: Create release
+        if: steps.guidance.outputs.existing != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -40,4 +62,4 @@ jobs:
           test -n "$APP_DMG"
           shasum -a 256 "$APP_ZIP" > "$APP_ZIP.sha256"
           shasum -a 256 "$APP_DMG" > "$APP_DMG.sha256"
-          gh release create "v$VERSION" "$APP_DMG" "$APP_DMG.sha256" "$APP_ZIP" "$APP_ZIP.sha256" --title "Brightside Film Remote $VERSION" --generate-notes
+          gh release create "v$VERSION" "$APP_DMG" "$APP_DMG.sha256" "$APP_ZIP" "$APP_ZIP.sha256" --title "Brightside Film Remote $VERSION" --notes-file release-installation.md --generate-notes
